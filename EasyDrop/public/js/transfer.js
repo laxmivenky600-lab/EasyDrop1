@@ -72,7 +72,11 @@ if (!isReceiver) {
         bindSessionEvents(session);
         
         session.createSession(selectedFiles, (res) => {
-            const receiverUrl = `${window.location.origin}/receiver?sessionId=${res.sessionId}&token=${res.receiverToken}`;
+            let origin = window.location.origin;
+            if (res.baseUrl && (origin.includes('localhost') || origin.includes('127.0.0.1') || res.baseUrl.startsWith('https://'))) {
+                origin = res.baseUrl;
+            }
+            const receiverUrl = `${origin}/receiver?sessionId=${res.sessionId}&token=${res.receiverToken}`;
             document.getElementById('qr-container').innerHTML = '';
             generateQR(receiverUrl, 'qr-container');
             document.getElementById('status-text').innerText = 'Waiting for receiver...';
@@ -126,7 +130,11 @@ if (!isReceiver) {
         document.getElementById('qr-view').style.display = 'block';
         
         session.createSession(selectedFiles, (res) => {
-            const receiverUrl = `${window.location.origin}/receiver?sessionId=${res.sessionId}&token=${res.receiverToken}`;
+            let origin = window.location.origin;
+            if (res.baseUrl && (origin.includes('localhost') || origin.includes('127.0.0.1') || res.baseUrl.startsWith('https://'))) {
+                origin = res.baseUrl;
+            }
+            const receiverUrl = `${origin}/receiver?sessionId=${res.sessionId}&token=${res.receiverToken}`;
             generateQR(receiverUrl, 'qr-container');
             startQRTimer();
         });

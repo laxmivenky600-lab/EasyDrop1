@@ -21,11 +21,30 @@ function initialize(io) {
                 }
             }
 
-            const session = sessions.createSession(data.files);
+            const publicUrl = process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL;
+            let baseUrl = publicUrl;
+            if (!baseUrl) {
+                const os = require('os');
+                const interfaces = os.networkInterfaces();
+                let localIp = '127.0.0.1';
+                for (const name of Object.keys(interfaces)) {
+                    for (const iface of interfaces[name]) {
+                        if (iface.family === 'IPv4' && !iface.internal) {
+                            localIp = iface.address;
+                            break;
+                        }
+                    }
+                    if (localIp !== '127.0.0.1') break;
+                }
+                const port = process.env.PORT || 3000;
+                baseUrl = `http://${localIp}:${port}`;
+            }
+
             callback({
                 sessionId: session.sessionId,
                 senderToken: session.senderToken,
-                receiverToken: session.receiverToken
+                receiverToken: session.receiverToken,
+                baseUrl
             });
         });
 
