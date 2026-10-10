@@ -21,6 +21,7 @@ function initialize(io) {
                 }
             }
 
+            const session = sessions.createSession(data.files);
             const publicUrl = process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL;
             let baseUrl = publicUrl;
             if (!baseUrl) {
