@@ -1,59 +1,50 @@
 // WebRTC and Socket.IO connection manager
 class EasyDropSession {
-    constructor(role) {
-        this.role = role; // Initial role
+    constructor() {
         this.socket = io();
         this.pc = null;
         this.channel = null;
         this.sessionId = null;
-        this.files = []; // Files I am sending
-        this.receivedFiles = []; // Files I have received
+        this.role = null;
         
-        // Callbacks
-        this.onPeerJoined = () => {};
-        this.onReady = () => {};
-        this.onAccepted = () => {};
-        this.onDeclined = () => {};
-        this.onProgress = () => {};
-        this.onComplete = () => {};
-        this.onError = () => {};
-        this.onFilesUpdated = () => {};
-
-        this.setupSocket();
+        // Transfer state
+        this.pendingFiles = []; // files selected to be sent
+        this.receivedFiles = []; // files received from peer
+        
+        // Event hooks for UI
+        this.onConnectedToPeer = () => {};
+        this.onPeerDisconnected = () => {};
+        this.onTransferOffer = (filesMeta) => {};
+        this.onTransferProgress = (sent, total) => {};
+        this.onTransferComplete = () => {};
+        this.onTransferDeclined = () => {};
+        this.onError = (err) => {};
+        
+        this._setupSocket();
     }
 
-    setupSocket() {
-        this.socket.on('peer-joined', (data) => {
-            if (data.files && data.files.length > 0) {
-                this.onFilesUpdated(data.files);
+    _setupSocket() {
+        this.socket.on('peer-joined', async () => {
+            console.log(`[Diagnostic] Peer joined the session.`);
+            // If I am the creator (sender), and someone joined, I should create the WebRTC offer.
+            if (this.role === 'creator') {
+                await this._initiateWebRTC();
             }
-            this.onPeerJoined(data);
         });
-        
-        this.socket.on('accept', () => this.handleAccept());
-        this.socket.on('decline', () => this.onDeclined());
-        this.socket.on('cancel', () => this.onError('Session cancelled'));
-        this.socket.on('complete', () => this.onComplete());
-        this.socket.on('expired', () => this.onError('Session expired'));
-        this.socket.on('peer-left', () => this.onError('Peer disconnected'));
 
-        // Since WebRTC is symmetrical, we just need one side to create the offer.
-        // Let's say the receiver ALWAYS creates the offer when they click "Accept".
         this.socket.on('offer', async ({ sdp }) => {
             console.log(`[Diagnostic] Received offer from peer`);
-            await this.setupWebRTC();
+            await this._setupWebRTC();
             await this.pc.setRemoteDescription(new RTCSessionDescription(sdp));
             const answer = await this.pc.createAnswer();
             await this.pc.setLocalDescription(answer);
             this.socket.emit('answer', { sessionId: this.sessionId, sdp: this.pc.localDescription });
-            console.log(`[Diagnostic] Answer sent to peer`);
         });
 
         this.socket.on('answer', async ({ sdp }) => {
             console.log(`[Diagnostic] Received answer from peer`);
             if (this.pc) {
                 await this.pc.setRemoteDescription(new RTCSessionDescription(sdp));
-                console.log(`[Diagnostic] Remote description set for answer`);
             }
         });
 
@@ -67,134 +58,176 @@ class EasyDropSession {
                 }
             }
         });
+        
+        this.socket.on('peer-left', () => {
+            this.onPeerDisconnected();
+            this.disconnect();
+        });
+        
+        this.socket.on('expired', () => this.onError('Session expired.'));
     }
 
-    createSession(files, callback) {
-        this.files = files || [];
-        const payload = this.files.map(f => ({ name: f.name, size: f.size, type: f.type }));
-        this.socket.emit('create-session', { files: payload }, (res) => {
+    async createSession(callback) {
+        this.role = 'creator';
+        // Note: we don't send files during session creation anymore. Files are negotiated over WebRTC.
+        this.socket.emit('create-session', { files: [] }, (res) => {
+            if (res.error) {
+                this.onError(res.error);
+                return;
+            }
             this.sessionId = res.sessionId;
-            this.socket.emit('join-session', { sessionId: this.sessionId, role: this.role, token: this.role === 'sender' ? res.senderToken : res.receiverToken }, () => {
+            this.socket.emit('join-session', { sessionId: this.sessionId, role: 'sender', token: res.senderToken }, (joinRes) => {
+                if (joinRes.error) return this.onError(joinRes.error);
                 callback(res);
             });
         });
     }
 
-    joinSession(sessionId, token, files, callback) {
+    async joinSession(sessionId, callback) {
+        this.role = 'joiner';
         this.sessionId = sessionId;
-        this.files = files || [];
-        const payload = this.files.length > 0 ? this.files.map(f => ({ name: f.name, size: f.size, type: f.type })) : null;
-        
-        this.socket.emit('join-session', { sessionId, role: this.role, token, files: payload }, (res) => {
-            if (res.error) return this.onError(res.error);
-            if (res.files && res.files.length > 0) {
-                this.onFilesUpdated(res.files);
+        this.socket.emit('join-session', { sessionId, role: 'receiver', token: null }, (res) => {
+            if (res.error) {
+                callback({ error: res.error });
+                return;
             }
-            callback(res);
+            callback({ success: true });
         });
     }
 
-    async setupWebRTC() {
-        if (this.pc) return; // already set up
-        
+    async _setupWebRTC() {
+        if (this.pc) return;
         console.log(`[Diagnostic] Setting up WebRTC connection...`);
         let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
         try {
             const res = await fetch('/api/ice-servers');
-            if (res.ok) {
-                iceServers = await res.json();
-                console.log(`[Diagnostic] Fetched ICE servers from backend. Count: ${iceServers.length}`);
-            }
+            if (res.ok) iceServers = await res.json();
         } catch(e) {
-            console.warn(`[Diagnostic] Failed to fetch custom ICE servers. Falling back to default STUN.`, e);
+            console.warn(`[Diagnostic] Failed to fetch custom ICE servers.`, e);
         }
 
         this.pc = new RTCPeerConnection({ iceServers });
         
-        this.pc.oniceconnectionstatechange = () => {
-            console.log(`[Diagnostic] ICE Connection State: ${this.pc.iceConnectionState}`);
-        };
-
         this.pc.onicecandidate = (e) => {
             if (e.candidate) {
                 this.socket.emit('ice-candidate', { sessionId: this.sessionId, candidate: e.candidate });
             }
         };
 
-        // We want data channels to be fully bi-directional.
-        // We'll let the 'receiver' role create the channel for consistency (since they create the offer).
-        if (this.role === 'receiver') {
-            this.channel = this.pc.createDataChannel('easydrop-files', { ordered: true });
-            console.log(`[Diagnostic] Created WebRTC Data Channel`);
-            this.setupChannel();
+        if (this.role === 'creator') {
+            this.channel = this.pc.createDataChannel('easydrop-data', { ordered: true });
+            this._setupChannel();
         } else {
             this.pc.ondatachannel = (e) => {
                 this.channel = e.channel;
-                console.log(`[Diagnostic] Received WebRTC Data Channel`);
-                this.setupChannel();
+                this._setupChannel();
             };
         }
     }
-
-    setupChannel() {
-        this.channel.binaryType = 'arraybuffer';
-        this.channel.onopen = () => {
-            console.log(`[Diagnostic] Data Channel is OPEN`);
-            this.onReady();
-        };
-        
-        let incomingParts = [];
-        let currentMeta = null;
-        let currentSize = 0;
-        let expectedFilesCount = 0;
-
-        this.channel.onmessage = (e) => {
-            if (typeof e.data === 'string') {
-                const msg = JSON.parse(e.data);
-                if (msg.type === 'batch-start') {
-                    expectedFilesCount = msg.count;
-                    this.receivedFiles = []; // reset for this batch
-                } else if (msg.type === 'start') {
-                    currentMeta = msg.meta;
-                    incomingParts = [];
-                    currentSize = 0;
-                } else if (msg.type === 'end') {
-                    const blob = new Blob(incomingParts, { type: currentMeta.type });
-                    this.receivedFiles.push({ name: currentMeta.name, blob });
-                    incomingParts = [];
-                    
-                    if (this.receivedFiles.length === expectedFilesCount) {
-                        this.socket.emit('complete', { sessionId: this.sessionId });
-                        this.onComplete();
-                    }
-                }
-            } else {
-                incomingParts.push(e.data);
-                currentSize += e.data.byteLength;
-                this.onProgress(e.data.byteLength);
-            }
-        };
-    }
-
-    async handleAccept() {
-        console.log(`[Diagnostic] Transfer accepted, generating WebRTC offer...`);
-        this.onAccepted();
-        await this.setupWebRTC();
+    
+    async _initiateWebRTC() {
+        await this._setupWebRTC();
         const offer = await this.pc.createOffer();
         await this.pc.setLocalDescription(offer);
         this.socket.emit('offer', { sessionId: this.sessionId, sdp: this.pc.localDescription });
     }
 
+    _setupChannel() {
+        this.channel.binaryType = 'arraybuffer';
+        this.channel.onopen = () => {
+            console.log(`[Diagnostic] Data Channel is OPEN`);
+            this.onConnectedToPeer();
+        };
+        
+        let incomingParts = [];
+        let currentMeta = null;
+        let expectedFilesCount = 0;
+        let receivedBytes = 0;
+        let totalIncomingBytes = 0;
+
+        this.channel.onmessage = (e) => {
+            if (typeof e.data === 'string') {
+                const msg = JSON.parse(e.data);
+                if (msg.type === 'offer-transfer') {
+                    totalIncomingBytes = msg.files.reduce((acc, f) => acc + f.size, 0);
+                    expectedFilesCount = msg.files.length;
+                    this.receivedFiles = []; // reset for the new batch
+                    receivedBytes = 0;
+                    this.onTransferOffer(msg.files);
+                } else if (msg.type === 'accept-transfer') {
+                    this._startSendingFiles();
+                } else if (msg.type === 'decline-transfer') {
+                    this.onTransferDeclined();
+                } else if (msg.type === 'start-file') {
+                    currentMeta = msg.meta;
+                    incomingParts = [];
+                } else if (msg.type === 'end-file') {
+                    const blob = new Blob(incomingParts, { type: currentMeta.type });
+                    this.receivedFiles.push({ name: currentMeta.name, blob });
+                    incomingParts = [];
+                    
+                    if (this.receivedFiles.length === expectedFilesCount) {
+                        this.onTransferComplete();
+                    }
+                }
+            } else {
+                incomingParts.push(e.data);
+                receivedBytes += e.data.byteLength;
+                this.onTransferProgress(receivedBytes, totalIncomingBytes);
+            }
+        };
+    }
+
+    offerFiles(files) {
+        if (!this.channel || this.channel.readyState !== 'open') return false;
+        this.pendingFiles = Array.from(files);
+        if (this.pendingFiles.length === 0) return false;
+        
+        const metadata = this.pendingFiles.map(f => ({ name: f.name, size: f.size, type: f.type }));
+        this.channel.send(JSON.stringify({ type: 'offer-transfer', files: metadata }));
+        return true;
+    }
+    
     acceptTransfer() {
-        this.socket.emit('accept', { sessionId: this.sessionId });
+        if (this.channel && this.channel.readyState === 'open') {
+            this.channel.send(JSON.stringify({ type: 'accept-transfer' }));
+        }
     }
-
+    
     declineTransfer() {
-        this.socket.emit('decline', { sessionId: this.sessionId });
+        if (this.channel && this.channel.readyState === 'open') {
+            this.channel.send(JSON.stringify({ type: 'decline-transfer' }));
+        }
     }
 
-    cancelTransfer() {
-        this.socket.emit('cancel', { sessionId: this.sessionId });
+    async _startSendingFiles() {
+        if (!this.channel || this.channel.readyState !== 'open') return;
+        
+        const CHUNK_SIZE = 16 * 1024;
+        let sentBytes = 0;
+        const totalBytes = this.pendingFiles.reduce((acc, f) => acc + f.size, 0);
+        
+        for (const file of this.pendingFiles) {
+            this.channel.send(JSON.stringify({ type: 'start-file', meta: { name: file.name, size: file.size, type: file.type } }));
+            
+            let offset = 0;
+            while (offset < file.size) {
+                if (this.channel.bufferedAmount > 1024 * 1024) {
+                    await new Promise(r => setTimeout(r, 50));
+                    continue;
+                }
+                const chunk = file.slice(offset, offset + CHUNK_SIZE);
+                const buffer = await chunk.arrayBuffer();
+                this.channel.send(buffer);
+                offset += buffer.byteLength;
+                sentBytes += buffer.byteLength;
+                this.onTransferProgress(sentBytes, totalBytes);
+            }
+            
+            this.channel.send(JSON.stringify({ type: 'end-file' }));
+        }
+        
+        this.onTransferComplete();
     }
 
     disconnect() {
@@ -209,35 +242,6 @@ class EasyDropSession {
         if (this.channel) {
             this.channel.close();
             this.channel = null;
-        }
-    }
-
-    async sendFiles(filesToSend) {
-        if (!this.channel || this.channel.readyState !== 'open') return;
-        
-        const files = filesToSend || this.files;
-        if (!files || files.length === 0) return;
-
-        const CHUNK_SIZE = 16 * 1024;
-        this.channel.send(JSON.stringify({ type: 'batch-start', count: files.length }));
-        
-        for (const file of files) {
-            this.channel.send(JSON.stringify({ type: 'start', meta: { name: file.name, size: file.size, type: file.type } }));
-            
-            let offset = 0;
-            while (offset < file.size) {
-                if (this.channel.bufferedAmount > 1024 * 1024) {
-                    await new Promise(r => setTimeout(r, 50));
-                    continue;
-                }
-                const chunk = file.slice(offset, offset + CHUNK_SIZE);
-                const buffer = await chunk.arrayBuffer();
-                this.channel.send(buffer);
-                offset += buffer.byteLength;
-                this.onProgress(buffer.byteLength);
-            }
-            
-            this.channel.send(JSON.stringify({ type: 'end' }));
         }
     }
 }

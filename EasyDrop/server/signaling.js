@@ -88,20 +88,19 @@ function initialize(io) {
         // WebRTC Signaling
         socket.on('offer', ({ sessionId, sdp }) => {
             const session = validateSession(sessionId);
-            // WebRTC should only proceed if the session was explicitly accepted
-            if (!session || session.state !== 'accepted') return;
+            if (!session) return;
             socket.to(sessionId).emit('offer', { sdp });
         });
 
         socket.on('answer', ({ sessionId, sdp }) => {
             const session = validateSession(sessionId);
-            if (!session || session.state !== 'accepted') return;
+            if (!session) return;
             socket.to(sessionId).emit('answer', { sdp });
         });
 
         socket.on('ice-candidate', ({ sessionId, candidate }) => {
             const session = validateSession(sessionId);
-            if (!session || session.state !== 'accepted') return;
+            if (!session) return;
             socket.to(sessionId).emit('ice-candidate', { candidate });
         });
 

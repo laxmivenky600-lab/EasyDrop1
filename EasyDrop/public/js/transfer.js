@@ -1,8 +1,9 @@
 const views = {
     mode: document.getElementById('mode-selection-view'),
     selection: document.getElementById('selection-view'),
+    join: document.getElementById('join-view'),
     qr: document.getElementById('qr-view'),
-    completion: document.getElementById('completion-view')
+    lobby: document.getElementById('lobby-view')
 };
 
 function showView(viewId) {
@@ -11,160 +12,259 @@ function showView(viewId) {
 }
 
 let session = null;
-let currentRole = null; // 'sender' or 'receiver'
 let selectedFiles = [];
-let totalSize = 0;
-let sentBytes = 0;
 let qrTimerInterval = null;
-let qrTimeRemaining = 300; // 5 mins
+let qrTimeRemaining = 300;
 
 const params = new URLSearchParams(window.location.search);
-let sessionIdParam = params.get('sessionId');
-let tokenParam = params.get('token');
-let modeParam = params.get('mode'); // optional, determines if we should act as sender or receiver right away
+const initialSessionId = params.get('sessionId');
 
-// Check if we are joining via URL
-if (sessionIdParam) {
-    // If URL dictates 'send', we are sender joining a receiver-created session
-    // If URL dictates 'receive' or is absent, we are receiver joining a sender-created session
-    if (modeParam === 'send') {
-        initAsSender(sessionIdParam, tokenParam);
-    } else {
-        initAsReceiver(sessionIdParam, tokenParam);
-    }
+if (initialSessionId) {
+    // If opened via QR code link, start as receiver joining the session immediately
+    showView('join');
+    joinExistingSession(initialSessionId);
 } else {
-    // We are starting fresh (mode selection)
+    // Start at mode selection
     if (views.mode) showView('mode');
     
     document.getElementById('mode-send')?.addEventListener('click', () => {
-        initAsSender();
+        showView('selection');
+        document.getElementById('create-session-btn').style.display = 'inline-block';
+        document.getElementById('send-now-btn').style.display = 'none';
+        document.getElementById('cancel-selection-btn').style.display = 'none';
     });
     
     document.getElementById('mode-receive')?.addEventListener('click', () => {
-        initAsReceiver();
+        showView('join');
     });
 }
 
-// Manual Join
-document.getElementById('manual-join-btn')?.addEventListener('click', () => {
-    const code = document.getElementById('manual-session-code').value.trim().toUpperCase();
-    if (!code) return;
-    
-    // If we are currently waiting as Receiver, and we type a code, we join the Sender's session as Receiver.
-    // If we are currently waiting as Sender, and we type a code, we join the Receiver's session as Sender.
-    // For simplicity, manual code always joins as receiver, UNLESS we are already a sender with files ready.
-    if (currentRole === 'sender') {
-        console.log(`[Diagnostic] Joining as sender with manual code: ${code}`);
-        session.joinSession(code, null, selectedFiles, handleJoinResult);
-    } else {
-        console.log(`[Diagnostic] Joining as receiver with manual code: ${code}`);
-        session.joinSession(code, null, null, handleJoinResult);
-    }
-});
+// ================= FILE SELECTION LOGIC =================
+const fileInput = document.getElementById('file-input');
+const dropZone = document.getElementById('drop-zone');
+const fileList = document.getElementById('file-list');
+const createBtn = document.getElementById('create-session-btn');
+const sendNowBtn = document.getElementById('send-now-btn');
 
-function handleJoinResult(res) {
-    if (res.error) {
-        console.error(`[Diagnostic] Join failed: ${res.error}`);
-        showError(res.error);
-        return;
-    }
-    console.log(`[Diagnostic] Successfully joined session`);
-    document.getElementById('qr-container').style.display = 'none';
-    document.getElementById('manual-join-container').style.display = 'none';
-    stopQRTimer();
+function handleFiles(files) {
+    selectedFiles = Array.from(files);
+    fileList.innerHTML = selectedFiles.map(f => `<div class="file-item"><span>${f.name}</span><span>${Math.round(f.size/1024)} KB</span></div>`).join('');
     
-    if (currentRole === 'receiver') {
-        handleIncomingFiles(res.files);
+    if (selectedFiles.length > 0) {
+        createBtn.disabled = false;
+        sendNowBtn.disabled = false;
     } else {
-        document.getElementById('status-text').innerText = 'Connected. Waiting for receiver to approve...';
+        createBtn.disabled = true;
+        sendNowBtn.disabled = true;
     }
 }
 
-// Setup Sender Flow
-function initAsSender(joinSessionId, joinToken) {
-    currentRole = 'sender';
-    session = new window.EasyDropSession('sender');
+fileInput?.addEventListener('change', (e) => handleFiles(e.target.files));
+dropZone?.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone?.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone?.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
+
+// ================= SENDER CREATES SESSION =================
+createBtn?.addEventListener('click', () => {
+    session = new window.EasyDropSession();
     bindSessionEvents();
     
-    showView('selection');
+    showView('qr');
+    document.getElementById('status-text-sender').innerText = 'Creating session...';
     
-    const fileInput = document.getElementById('file-input');
-    const dropZone = document.getElementById('drop-zone');
-    const fileList = document.getElementById('file-list');
-    const createBtn = document.getElementById('create-session-btn');
+    session.createSession((res) => {
+        console.log(`[Diagnostic] Session created: ${res.sessionId}`);
+        
+        let origin = window.location.origin;
+        if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+            origin = res.baseUrl || origin;
+        }
+        
+        const qrUrl = `${origin}/receiver?sessionId=${res.sessionId}`;
+        console.log(`[Diagnostic] QR URL: ${qrUrl}`);
+        
+        document.getElementById('session-code-display').innerText = res.sessionId;
+        document.getElementById('qr-container').innerHTML = '';
+        generateQR(qrUrl, 'qr-container');
+        document.getElementById('status-text-sender').innerText = 'Waiting for receiver to connect...';
+        startQRTimer();
+    });
+});
+
+// ================= RECEIVER JOINS SESSION =================
+document.getElementById('manual-join-btn')?.addEventListener('click', () => {
+    const code = document.getElementById('manual-session-code').value.trim().toUpperCase();
+    if (!code) return;
+    joinExistingSession(code);
+});
+
+function joinExistingSession(code) {
+    document.getElementById('join-error-text').style.display = 'none';
+    if (document.getElementById('join-instructions-container')) document.getElementById('join-instructions-container').style.display = 'none';
+    if (document.getElementById('join-loading-container')) document.getElementById('join-loading-container').style.display = 'block';
     
-    const handleFiles = (files) => {
-        selectedFiles = Array.from(files);
-        totalSize = selectedFiles.reduce((acc, f) => acc + f.size, 0);
-        fileList.innerHTML = selectedFiles.map(f => `<div class="file-item"><span>${f.name}</span><span>${Math.round(f.size/1024)} KB</span></div>`).join('');
-        createBtn.disabled = selectedFiles.length === 0;
+    session = new window.EasyDropSession();
+    bindSessionEvents();
+    
+    session.joinSession(code, (res) => {
+        if (res.error) {
+            console.error(`[Diagnostic] Join failed: ${res.error}`);
+            if (document.getElementById('join-instructions-container')) document.getElementById('join-instructions-container').style.display = 'block';
+            if (document.getElementById('join-loading-container')) document.getElementById('join-loading-container').style.display = 'none';
+            document.getElementById('join-error-text').innerText = res.error;
+            document.getElementById('join-error-text').style.display = 'block';
+            return;
+        }
+        console.log(`[Diagnostic] Joined session via code, waiting for WebRTC channel...`);
+    });
+}
+
+// ================= SESSION EVENTS & LOBBY =================
+function bindSessionEvents() {
+    session.onConnectedToPeer = () => {
+        console.log(`[Diagnostic] Connected to peer successfully!`);
+        stopQRTimer();
+        showView('lobby');
+        resetLobbyUI();
+        
+        // If we had files picked (e.g. we are the sender who just created), offer them immediately!
+        if (selectedFiles.length > 0 && session.role === 'creator') {
+            document.getElementById('active-transfer-container').style.display = 'block';
+            document.getElementById('transfer-heading').innerText = 'Asking peer for permission...';
+            session.offerFiles(selectedFiles);
+            selectedFiles = []; // Clear local so we don't double send if they go back
+        }
     };
     
-    fileInput.onchange = (e) => handleFiles(e.target.files);
-    dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('dragover'); };
-    dropZone.ondragleave = () => dropZone.classList.remove('dragover');
-    dropZone.ondrop = (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); };
+    session.onTransferOffer = (filesMeta) => {
+        console.log(`[Diagnostic] Received transfer offer`);
+        document.getElementById('incoming-request-container').style.display = 'block';
+        const totalSize = filesMeta.reduce((acc, f) => acc + f.size, 0);
+        document.getElementById('incoming-status-text').innerText = `Peer wants to send ${filesMeta.length} file(s) (${Math.round(totalSize/1024)} KB).`;
+    };
     
-    createBtn.onclick = () => {
-        showView('qr');
-        document.getElementById('qr-title').innerText = 'Scan to Receive Files';
+    session.onTransferProgress = (sent, total) => {
+        document.getElementById('incoming-request-container').style.display = 'none';
+        document.getElementById('active-transfer-container').style.display = 'block';
+        document.getElementById('transfer-heading').innerText = 'Transferring files...';
         
-        if (joinSessionId) {
-            // We are a sender joining an existing receiver session
-            console.log(`[Diagnostic] Sender joining existing receiver session: ${joinSessionId}`);
-            session.joinSession(joinSessionId, joinToken, selectedFiles, handleJoinResult);
+        const percent = Math.min(100, Math.round((sent / total) * 100));
+        document.getElementById('progress-fill').style.width = percent + '%';
+        document.getElementById('progress-text').innerText = percent + '%';
+    };
+    
+    session.onTransferComplete = () => {
+        console.log(`[Diagnostic] Transfer Complete`);
+        document.getElementById('active-transfer-container').style.display = 'none';
+        document.getElementById('completion-container').style.display = 'block';
+        
+        if (session.receivedFiles && session.receivedFiles.length > 0) {
+            document.getElementById('download-controls').style.display = 'block';
         } else {
-            // We are a sender creating a new session
-            session.createSession(selectedFiles, (res) => {
-                console.log(`[Diagnostic] Created SENDER session: ${res.sessionId}`);
-                let origin = window.location.origin;
-                if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
-                    origin = res.baseUrl || origin;
-                }
-                const receiverUrl = `${origin}/receiver?sessionId=${res.sessionId}&token=${res.receiverToken}`;
-                console.log(`[Diagnostic] QR URL generated: ${receiverUrl}`);
-                document.getElementById('session-code-display').innerText = res.sessionId;
-                generateQR(receiverUrl, 'qr-container');
-                startQRTimer();
-            });
+            document.getElementById('download-controls').style.display = 'none';
+        }
+    };
+    
+    session.onTransferDeclined = () => {
+        alert("Peer declined the transfer.");
+        resetLobbyUI();
+    };
+    
+    session.onPeerDisconnected = () => {
+        alert("Peer disconnected.");
+        window.location.href = '/';
+    };
+    
+    session.onError = (err) => {
+        console.error(`[Diagnostic] Session error: ${err}`);
+        alert(`Error: ${err}`);
+        if (!session.channel || session.channel.readyState !== 'open') {
+            window.location.href = '/';
         }
     };
 }
 
-// Setup Receiver Flow
-function initAsReceiver(joinSessionId, joinToken) {
-    currentRole = 'receiver';
-    session = new window.EasyDropSession('receiver');
-    bindSessionEvents();
-    
-    showView('qr');
-    document.getElementById('qr-title').innerText = 'Scan to Send Files';
-    
-    if (joinSessionId) {
-        // Classic mode: joining a sender's session via URL
-        console.log(`[Diagnostic] Receiver joining existing sender session: ${joinSessionId}`);
-        document.getElementById('qr-container').style.display = 'none';
-        document.getElementById('manual-join-container').style.display = 'none';
-        session.joinSession(joinSessionId, joinToken, null, handleJoinResult);
-    } else {
-        // Creating a receiver session
-        document.getElementById('manual-join-container').style.display = 'block';
-        session.createSession(null, (res) => {
-            console.log(`[Diagnostic] Created RECEIVER session: ${res.sessionId}`);
-            let origin = window.location.origin;
-            if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
-                origin = res.baseUrl || origin;
-            }
-            const senderUrl = `${origin}/create-transfer?mode=send&sessionId=${res.sessionId}&token=${res.senderToken}`;
-            console.log(`[Diagnostic] QR URL generated: ${senderUrl}`);
-            document.getElementById('session-code-display').innerText = res.sessionId;
-            generateQR(senderUrl, 'qr-container');
-            startQRTimer();
-        });
-    }
+// ================= LOBBY ACTIONS =================
+function resetLobbyUI() {
+    document.getElementById('incoming-request-container').style.display = 'none';
+    document.getElementById('active-transfer-container').style.display = 'none';
+    document.getElementById('completion-container').style.display = 'none';
+    document.getElementById('progress-fill').style.width = '0%';
+    document.getElementById('progress-text').innerText = '0%';
 }
 
-// UI Helpers
+document.getElementById('lobby-send-btn')?.addEventListener('click', () => {
+    // Show file selection over the lobby
+    showView('selection');
+    document.getElementById('create-session-btn').style.display = 'none';
+    document.getElementById('send-now-btn').style.display = 'inline-block';
+    document.getElementById('cancel-selection-btn').style.display = 'inline-block';
+    
+    // Clear previous
+    selectedFiles = [];
+    fileList.innerHTML = '';
+    sendNowBtn.disabled = true;
+});
+
+document.getElementById('cancel-selection-btn')?.addEventListener('click', () => {
+    showView('lobby');
+});
+
+sendNowBtn?.addEventListener('click', () => {
+    if (selectedFiles.length === 0) return;
+    showView('lobby');
+    resetLobbyUI();
+    document.getElementById('active-transfer-container').style.display = 'block';
+    document.getElementById('transfer-heading').innerText = 'Asking peer for permission...';
+    session.offerFiles(selectedFiles);
+});
+
+document.getElementById('accept-btn')?.addEventListener('click', () => {
+    document.getElementById('incoming-request-container').style.display = 'none';
+    document.getElementById('active-transfer-container').style.display = 'block';
+    document.getElementById('transfer-heading').innerText = 'Receiving files...';
+    session.acceptTransfer();
+});
+
+document.getElementById('decline-btn')?.addEventListener('click', () => {
+    document.getElementById('incoming-request-container').style.display = 'none';
+    session.declineTransfer();
+});
+
+document.getElementById('lobby-disconnect-btn')?.addEventListener('click', () => {
+    if (session) session.disconnect();
+    window.location.href = '/';
+});
+
+document.getElementById('dismiss-completion-btn')?.addEventListener('click', () => {
+    document.getElementById('completion-container').style.display = 'none';
+});
+
+// ================= DOWNLOAD LOGIC =================
+document.getElementById('download-all-btn')?.addEventListener('click', () => {
+    if (!session.receivedFiles || session.receivedFiles.length === 0) return;
+    
+    // If only one file was received, download it directly without zipping
+    if (session.receivedFiles.length === 1) {
+        const f = session.receivedFiles[0];
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(f.blob);
+        link.download = f.name;
+        link.click();
+        return;
+    }
+    
+    const zip = new JSZip();
+    session.receivedFiles.forEach(f => zip.file(f.name, f.blob));
+    zip.generateAsync({type:"blob"}).then(content => {
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(content);
+        link.download = "easydrop.zip";
+        link.click();
+    });
+});
+
+// ================= TIMERS & HELPERS =================
 function startQRTimer() {
     stopQRTimer();
     qrTimeRemaining = 300;
@@ -175,7 +275,8 @@ function startQRTimer() {
         updateTimerDisplay();
         if (qrTimeRemaining <= 0) {
             stopQRTimer();
-            showError("Session expired. Please start over.");
+            document.getElementById('status-text-sender').innerText = 'Session expired. Please restart.';
+            document.getElementById('status-text-sender').style.color = 'red';
         }
     }, 1000);
 }
@@ -196,145 +297,7 @@ function updateTimerDisplay() {
     }
 }
 
-function showError(err) {
-    const st = document.getElementById('status-text');
-    st.innerText = err;
-    st.style.color = 'red';
-    document.getElementById('approval-controls').style.display = 'none';
-    document.getElementById('transfer-controls').style.display = 'none';
-    document.getElementById('progress-container').style.display = 'none';
-    stopQRTimer();
-}
-
-function handleIncomingFiles(files) {
-    if (!files || files.length === 0) return;
-    document.getElementById('status-text').innerText = `Received request for ${files.length} files`;
-    totalSize = files.reduce((acc, f) => acc + f.size, 0);
-    document.getElementById('approval-controls').style.display = 'block';
-}
-
-function bindSessionEvents() {
-    session.onPeerJoined = (data) => {
-        stopQRTimer();
-        document.getElementById('qr-container').style.display = 'none';
-        document.getElementById('manual-join-container').style.display = 'none';
-        
-        if (currentRole === 'sender') {
-            document.getElementById('status-text').innerText = 'Receiver connected. Waiting for approval...';
-        } else {
-            // we are receiver, SENDER joined.
-            if (data.files) handleIncomingFiles(data.files);
-        }
-    };
-    
-    session.onFilesUpdated = (files) => {
-        if (currentRole === 'receiver') handleIncomingFiles(files);
-    };
-
-    session.onAccepted = () => {
-        document.getElementById('status-text').innerText = 'Connecting peer-to-peer...';
-        document.getElementById('approval-controls').style.display = 'none';
-    };
-
-    session.onReady = () => {
-        if (currentRole === 'sender') {
-            document.getElementById('status-text').innerText = 'Ready to send';
-            document.getElementById('transfer-controls').style.display = 'block';
-        } else {
-            document.getElementById('status-text').innerText = 'Receiving files...';
-            document.getElementById('progress-container').style.display = 'block';
-        }
-    };
-
-    session.onProgress = (bytes) => {
-        sentBytes += bytes; // applies to both sending or receiving in this simple UI
-        const percent = Math.min(100, Math.round((sentBytes / totalSize) * 100));
-        document.getElementById('progress-fill').style.width = percent + '%';
-        document.getElementById('progress-text').innerText = percent + '%';
-    };
-
-    session.onComplete = () => {
-        showView('completion');
-        if (session.receivedFiles && session.receivedFiles.length > 0) {
-            document.getElementById('download-controls').style.display = 'block';
-        } else {
-            document.getElementById('download-controls').style.display = 'none';
-        }
-    };
-
-    session.onDeclined = () => showError('Transfer declined by peer.');
-    session.onError = (err) => showError(err);
-}
-
-// Buttons
-document.getElementById('send-files-btn')?.addEventListener('click', () => {
-    document.getElementById('transfer-controls').style.display = 'none';
-    document.getElementById('progress-container').style.display = 'block';
-    document.getElementById('status-text').innerText = 'Sending files...';
-    sentBytes = 0; // reset for this batch
-    session.sendFiles();
-});
-
-document.getElementById('accept-btn')?.addEventListener('click', () => {
-    document.getElementById('approval-controls').style.display = 'none';
-    document.getElementById('status-text').innerText = 'Connecting peer-to-peer...';
-    sentBytes = 0;
-    session.acceptTransfer();
-});
-
-document.getElementById('decline-btn')?.addEventListener('click', () => {
-    session.declineTransfer();
-    window.location.href = '/';
-});
-
-document.getElementById('cancel-btn')?.addEventListener('click', () => {
-    if (session) {
-        session.cancelTransfer();
-        session.disconnect();
-    }
+document.getElementById('cancel-session-btn')?.addEventListener('click', () => {
+    if (session) session.disconnect();
     window.location.reload();
-});
-
-document.getElementById('download-all-btn')?.addEventListener('click', () => {
-    if (!session.receivedFiles || session.receivedFiles.length === 0) return;
-    if (session.receivedFiles.length === 1) {
-        // Single file download
-        const f = session.receivedFiles[0];
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(f.blob);
-        link.download = f.name;
-        link.click();
-    } else {
-        // Zip multiple
-        const zip = new JSZip();
-        session.receivedFiles.forEach(f => zip.file(f.name, f.blob));
-        zip.generateAsync({type:"blob"}).then(content => {
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(content);
-            link.download = "easydrop.zip";
-            link.click();
-        });
-    }
-});
-
-// Switch Direction / Send Files Back
-document.getElementById('send-back-btn')?.addEventListener('click', () => {
-    // We already have an established WebRTC channel.
-    // The user wants to send files now. We just show the file selection view, but we are ALREADY connected!
-    showView('selection');
-    document.getElementById('create-session-btn').innerText = 'Send Files Now';
-    document.getElementById('create-session-btn').onclick = () => {
-        showView('qr'); // Reuse qr view as the transfer active view
-        document.getElementById('qr-title').innerText = 'Sending Files Back';
-        document.getElementById('qr-container').style.display = 'none';
-        document.getElementById('manual-join-container').style.display = 'none';
-        stopQRTimer();
-        
-        document.getElementById('transfer-controls').style.display = 'none';
-        document.getElementById('progress-container').style.display = 'block';
-        document.getElementById('status-text').innerText = 'Sending files...';
-        
-        sentBytes = 0;
-        session.sendFiles(selectedFiles);
-    };
 });
