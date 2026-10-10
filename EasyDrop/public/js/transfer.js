@@ -1,7 +1,7 @@
 const views = {
     mode: document.getElementById('mode-selection-view'),
     selection: document.getElementById('selection-view'),
-    join: document.getElementById('join-view'),
+    loading: document.getElementById('loading-view'),
     qr: document.getElementById('qr-view'),
     lobby: document.getElementById('lobby-view')
 };
@@ -15,19 +15,30 @@ let session = null;
 let selectedFiles = [];
 let qrTimerInterval = null;
 let qrTimeRemaining = 300;
+let initialIntendedRole = 'creator'; // 'creator' or 'joiner'
 
 const params = new URLSearchParams(window.location.search);
 const initialSessionId = params.get('sessionId');
+const requestedRole = params.get('role'); // 'sender' or 'receiver'
 
 if (initialSessionId) {
-    // If opened via QR code link, start as receiver joining the session immediately
-    showView('join');
-    joinExistingSession(initialSessionId);
+    if (requestedRole === 'sender') {
+        // We scanned a "Receive" QR code, so we must pick files to send first
+        showView('selection');
+        document.getElementById('create-session-btn').style.display = 'none';
+        document.getElementById('send-now-btn').style.display = 'inline-block';
+        document.getElementById('send-now-btn').innerText = 'Join and Send';
+    } else {
+        // We scanned a "Send" QR code, we just join as receiver
+        showView('loading');
+        joinExistingSession(initialSessionId);
+    }
 } else {
     // Start at mode selection
     if (views.mode) showView('mode');
     
     document.getElementById('mode-send')?.addEventListener('click', () => {
+        initialIntendedRole = 'sender';
         showView('selection');
         document.getElementById('create-session-btn').style.display = 'inline-block';
         document.getElementById('send-now-btn').style.display = 'none';
@@ -35,7 +46,8 @@ if (initialSessionId) {
     });
     
     document.getElementById('mode-receive')?.addEventListener('click', () => {
-        showView('join');
+        initialIntendedRole = 'receiver';
+        createSessionAndShowQR('sender'); // We are receiving, so QR tells scanner to be 'sender'
     });
 }
 
@@ -64,8 +76,13 @@ dropZone?.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.cla
 dropZone?.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
 dropZone?.addEventListener('drop', (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
 
-// ================= SENDER CREATES SESSION =================
+// ================= SESSION CREATION =================
 createBtn?.addEventListener('click', () => {
+    // User picked files, clicked Create Transfer. Scanner will be 'receiver'
+    createSessionAndShowQR('receiver');
+});
+
+function createSessionAndShowQR(scannerRole) {
     session = new window.EasyDropSession();
     bindSessionEvents();
     
@@ -73,35 +90,31 @@ createBtn?.addEventListener('click', () => {
     document.getElementById('status-text-sender').innerText = 'Creating session...';
     
     session.createSession((res) => {
-        console.log(`[Diagnostic] Session created: ${res.sessionId}`);
-        
         let origin = window.location.origin;
         if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
             origin = res.baseUrl || origin;
         }
         
-        const qrUrl = `${origin}/receiver?sessionId=${res.sessionId}`;
-        console.log(`[Diagnostic] QR URL: ${qrUrl}`);
+        const qrUrl = `${origin}/receiver?sessionId=${res.sessionId}&role=${scannerRole}`;
         
         document.getElementById('session-code-display').innerText = res.sessionId;
         document.getElementById('qr-container').innerHTML = '';
         generateQR(qrUrl, 'qr-container');
-        document.getElementById('status-text-sender').innerText = 'Waiting for receiver to connect...';
+        document.getElementById('status-text-sender').innerText = 'Waiting for connection...';
         startQRTimer();
     });
-});
+}
 
-// ================= RECEIVER JOINS SESSION =================
+// ================= MANUAL JOIN / SCANNER JOIN =================
 document.getElementById('manual-join-btn')?.addEventListener('click', () => {
     const code = document.getElementById('manual-session-code').value.trim().toUpperCase();
     if (!code) return;
+    showView('loading');
     joinExistingSession(code);
 });
 
 function joinExistingSession(code) {
     document.getElementById('join-error-text').style.display = 'none';
-    if (document.getElementById('join-instructions-container')) document.getElementById('join-instructions-container').style.display = 'none';
-    if (document.getElementById('join-loading-container')) document.getElementById('join-loading-container').style.display = 'block';
     
     session = new window.EasyDropSession();
     bindSessionEvents();
@@ -109,30 +122,27 @@ function joinExistingSession(code) {
     session.joinSession(code, (res) => {
         if (res.error) {
             console.error(`[Diagnostic] Join failed: ${res.error}`);
-            if (document.getElementById('join-instructions-container')) document.getElementById('join-instructions-container').style.display = 'block';
-            if (document.getElementById('join-loading-container')) document.getElementById('join-loading-container').style.display = 'none';
+            showView('mode');
             document.getElementById('join-error-text').innerText = res.error;
             document.getElementById('join-error-text').style.display = 'block';
             return;
         }
-        console.log(`[Diagnostic] Joined session via code, waiting for WebRTC channel...`);
     });
 }
 
 // ================= SESSION EVENTS & LOBBY =================
 function bindSessionEvents() {
     session.onConnectedToPeer = () => {
-        console.log(`[Diagnostic] Connected to peer successfully!`);
         stopQRTimer();
         showView('lobby');
         resetLobbyUI();
         
-        // If we had files picked (e.g. we are the sender who just created), offer them immediately!
-        if (selectedFiles.length > 0 && session.role === 'creator') {
+        // If we had files picked (e.g. we are the sender who just created, or we joined via "Receive QR"), offer them immediately!
+        if (selectedFiles.length > 0) {
             document.getElementById('active-transfer-container').style.display = 'block';
             document.getElementById('transfer-heading').innerText = 'Asking peer for permission...';
             session.offerFiles(selectedFiles);
-            selectedFiles = []; // Clear local so we don't double send if they go back
+            selectedFiles = []; // Clear local
         }
     };
     
@@ -212,11 +222,19 @@ document.getElementById('cancel-selection-btn')?.addEventListener('click', () =>
 
 sendNowBtn?.addEventListener('click', () => {
     if (selectedFiles.length === 0) return;
-    showView('lobby');
-    resetLobbyUI();
-    document.getElementById('active-transfer-container').style.display = 'block';
-    document.getElementById('transfer-heading').innerText = 'Asking peer for permission...';
-    session.offerFiles(selectedFiles);
+    
+    if (initialSessionId) {
+        // We are joining an existing session as a sender right now
+        showView('loading');
+        joinExistingSession(initialSessionId);
+    } else {
+        // We are already connected in the lobby
+        showView('lobby');
+        resetLobbyUI();
+        document.getElementById('active-transfer-container').style.display = 'block';
+        document.getElementById('transfer-heading').innerText = 'Asking peer for permission...';
+        session.offerFiles(selectedFiles);
+    }
 });
 
 document.getElementById('accept-btn')?.addEventListener('click', () => {
