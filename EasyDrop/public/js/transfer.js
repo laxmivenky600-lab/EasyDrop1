@@ -1,9 +1,8 @@
 const views = {
     mode: document.getElementById('mode-selection-view'),
     selection: document.getElementById('selection-view'),
-    loading: document.getElementById('loading-view'),
     qr: document.getElementById('qr-view'),
-    lobby: document.getElementById('lobby-view')
+    active: document.getElementById('transfer-active-view')
 };
 
 function showView(viewId) {
@@ -15,7 +14,6 @@ let session = null;
 let selectedFiles = [];
 let qrTimerInterval = null;
 let qrTimeRemaining = 300;
-let initialIntendedRole = 'creator'; // 'creator' or 'joiner'
 
 const params = new URLSearchParams(window.location.search);
 const initialSessionId = params.get('sessionId');
@@ -23,14 +21,16 @@ const requestedRole = params.get('role'); // 'sender' or 'receiver'
 
 if (initialSessionId) {
     if (requestedRole === 'sender') {
-        // We scanned a "Receive" QR code, so we must pick files to send first
+        // We scanned a "Receive" QR code, we must pick files to send
         showView('selection');
         document.getElementById('create-session-btn').style.display = 'none';
         document.getElementById('send-now-btn').style.display = 'inline-block';
-        document.getElementById('send-now-btn').innerText = 'Join and Send';
+        document.getElementById('send-now-btn').innerText = 'Send Files';
     } else {
-        // We scanned a "Send" QR code, we just join as receiver
-        showView('loading');
+        // We scanned a "Send" QR code, we just join and receive
+        showView('active');
+        document.getElementById('transfer-heading').innerText = 'Connecting...';
+        document.getElementById('transfer-subheading').innerText = 'Establishing secure connection to sender.';
         joinExistingSession(initialSessionId);
     }
 } else {
@@ -38,16 +38,14 @@ if (initialSessionId) {
     if (views.mode) showView('mode');
     
     document.getElementById('mode-send')?.addEventListener('click', () => {
-        initialIntendedRole = 'sender';
         showView('selection');
         document.getElementById('create-session-btn').style.display = 'inline-block';
         document.getElementById('send-now-btn').style.display = 'none';
-        document.getElementById('cancel-selection-btn').style.display = 'none';
     });
     
     document.getElementById('mode-receive')?.addEventListener('click', () => {
-        initialIntendedRole = 'receiver';
-        createSessionAndShowQR('sender'); // We are receiving, so QR tells scanner to be 'sender'
+        // We are receiving, so QR tells scanner to be 'sender'
+        createSessionAndShowQR('sender');
     });
 }
 
@@ -97,7 +95,9 @@ function createSessionAndShowQR(scannerRole) {
         
         const qrUrl = `${origin}/receiver?sessionId=${res.sessionId}&role=${scannerRole}`;
         
-        document.getElementById('session-code-display').innerText = res.sessionId;
+        if (document.getElementById('session-code-display')) {
+            document.getElementById('session-code-display').innerText = res.sessionId;
+        }
         document.getElementById('qr-container').innerHTML = '';
         generateQR(qrUrl, 'qr-container');
         document.getElementById('status-text-sender').innerText = 'Waiting for connection...';
@@ -105,71 +105,82 @@ function createSessionAndShowQR(scannerRole) {
     });
 }
 
-// ================= MANUAL JOIN / SCANNER JOIN =================
-document.getElementById('manual-join-btn')?.addEventListener('click', () => {
-    const code = document.getElementById('manual-session-code').value.trim().toUpperCase();
-    if (!code) return;
-    showView('loading');
-    joinExistingSession(code);
-});
-
+// ================= SCANNER JOIN =================
 function joinExistingSession(code) {
-    document.getElementById('join-error-text').style.display = 'none';
-    
     session = new window.EasyDropSession();
     bindSessionEvents();
     
     session.joinSession(code, (res) => {
         if (res.error) {
             console.error(`[Diagnostic] Join failed: ${res.error}`);
-            showView('mode');
-            document.getElementById('join-error-text').innerText = res.error;
-            document.getElementById('join-error-text').style.display = 'block';
+            alert('Failed to join session: ' + res.error);
+            window.location.href = '/';
             return;
         }
     });
 }
 
-// ================= SESSION EVENTS & LOBBY =================
+// ================= SEND BUTTON (For scanner in Receive mode) =================
+sendNowBtn?.addEventListener('click', () => {
+    if (selectedFiles.length === 0) return;
+    
+    if (initialSessionId) {
+        showView('active');
+        document.getElementById('transfer-heading').innerText = 'Connecting...';
+        document.getElementById('transfer-subheading').innerText = 'Establishing secure connection to receiver.';
+        joinExistingSession(initialSessionId);
+    }
+});
+
+// ================= SESSION EVENTS =================
 function bindSessionEvents() {
     session.onConnectedToPeer = () => {
         stopQRTimer();
-        showView('lobby');
-        resetLobbyUI();
+        showView('active');
+        document.getElementById('connection-spinner').style.display = 'none';
+        document.getElementById('connected-icon').style.display = 'flex';
+        document.getElementById('transfer-heading').innerText = 'Connected!';
+        document.getElementById('transfer-heading').style.color = '#16a34a';
+        document.getElementById('transfer-subheading').innerText = 'Connection secured. Preparing transfer.';
         
-        // If we had files picked (e.g. we are the sender who just created, or we joined via "Receive QR"), offer them immediately!
+        // If we have files picked, start sending immediately!
         if (selectedFiles.length > 0) {
             document.getElementById('active-transfer-container').style.display = 'block';
-            document.getElementById('transfer-heading').innerText = 'Asking peer for permission...';
+            document.getElementById('transfer-progress-title').innerText = 'Sending files...';
             session.offerFiles(selectedFiles);
             selectedFiles = []; // Clear local
         }
     };
     
     session.onTransferOffer = (filesMeta) => {
-        console.log(`[Diagnostic] Received transfer offer`);
-        document.getElementById('incoming-request-container').style.display = 'block';
-        const totalSize = filesMeta.reduce((acc, f) => acc + f.size, 0);
-        document.getElementById('incoming-status-text').innerText = `Peer wants to send ${filesMeta.length} file(s) (${Math.round(totalSize/1024)} KB).`;
+        // Auto-accept transfers based on new requirements!
+        document.getElementById('active-transfer-container').style.display = 'block';
+        document.getElementById('transfer-progress-title').innerText = 'Receiving files...';
+        session.acceptTransfer();
     };
     
     session.onTransferProgress = (sent, total) => {
-        document.getElementById('incoming-request-container').style.display = 'none';
-        document.getElementById('active-transfer-container').style.display = 'block';
-        document.getElementById('transfer-heading').innerText = 'Transferring files...';
-        
         const percent = Math.min(100, Math.round((sent / total) * 100));
         document.getElementById('progress-fill').style.width = percent + '%';
         document.getElementById('progress-text').innerText = percent + '%';
+        document.getElementById('progress-detail').innerText = `${Math.round(sent/1024/1024*10)/10} MB / ${Math.round(total/1024/1024*10)/10} MB`;
     };
     
     session.onTransferComplete = () => {
-        console.log(`[Diagnostic] Transfer Complete`);
         document.getElementById('active-transfer-container').style.display = 'none';
+        document.getElementById('transfer-heading').style.display = 'none';
+        document.getElementById('transfer-subheading').style.display = 'none';
+        document.getElementById('connected-icon').style.display = 'none';
+        
         document.getElementById('completion-container').style.display = 'block';
         
         if (session.receivedFiles && session.receivedFiles.length > 0) {
             document.getElementById('download-controls').style.display = 'block';
+            
+            // Auto download when finished
+            setTimeout(() => {
+                document.getElementById('download-all-btn').click();
+            }, 500);
         } else {
             document.getElementById('download-controls').style.display = 'none';
         }
@@ -177,7 +188,7 @@ function bindSessionEvents() {
     
     session.onTransferDeclined = () => {
         alert("Peer declined the transfer.");
-        resetLobbyUI();
+        window.location.href = '/';
     };
     
     session.onPeerDisconnected = () => {
@@ -194,75 +205,10 @@ function bindSessionEvents() {
     };
 }
 
-// ================= LOBBY ACTIONS =================
-function resetLobbyUI() {
-    document.getElementById('incoming-request-container').style.display = 'none';
-    document.getElementById('active-transfer-container').style.display = 'none';
-    document.getElementById('completion-container').style.display = 'none';
-    document.getElementById('progress-fill').style.width = '0%';
-    document.getElementById('progress-text').innerText = '0%';
-}
-
-document.getElementById('lobby-send-btn')?.addEventListener('click', () => {
-    // Show file selection over the lobby
-    showView('selection');
-    document.getElementById('create-session-btn').style.display = 'none';
-    document.getElementById('send-now-btn').style.display = 'inline-block';
-    document.getElementById('cancel-selection-btn').style.display = 'inline-block';
-    
-    // Clear previous
-    selectedFiles = [];
-    fileList.innerHTML = '';
-    sendNowBtn.disabled = true;
-});
-
-document.getElementById('cancel-selection-btn')?.addEventListener('click', () => {
-    showView('lobby');
-});
-
-sendNowBtn?.addEventListener('click', () => {
-    if (selectedFiles.length === 0) return;
-    
-    if (initialSessionId) {
-        // We are joining an existing session as a sender right now
-        showView('loading');
-        joinExistingSession(initialSessionId);
-    } else {
-        // We are already connected in the lobby
-        showView('lobby');
-        resetLobbyUI();
-        document.getElementById('active-transfer-container').style.display = 'block';
-        document.getElementById('transfer-heading').innerText = 'Asking peer for permission...';
-        session.offerFiles(selectedFiles);
-    }
-});
-
-document.getElementById('accept-btn')?.addEventListener('click', () => {
-    document.getElementById('incoming-request-container').style.display = 'none';
-    document.getElementById('active-transfer-container').style.display = 'block';
-    document.getElementById('transfer-heading').innerText = 'Receiving files...';
-    session.acceptTransfer();
-});
-
-document.getElementById('decline-btn')?.addEventListener('click', () => {
-    document.getElementById('incoming-request-container').style.display = 'none';
-    session.declineTransfer();
-});
-
-document.getElementById('lobby-disconnect-btn')?.addEventListener('click', () => {
-    if (session) session.disconnect();
-    window.location.href = '/';
-});
-
-document.getElementById('dismiss-completion-btn')?.addEventListener('click', () => {
-    document.getElementById('completion-container').style.display = 'none';
-});
-
 // ================= DOWNLOAD LOGIC =================
 document.getElementById('download-all-btn')?.addEventListener('click', () => {
     if (!session.receivedFiles || session.receivedFiles.length === 0) return;
     
-    // If only one file was received, download it directly without zipping
     if (session.receivedFiles.length === 1) {
         const f = session.receivedFiles[0];
         const link = document.createElement('a');
@@ -282,7 +228,7 @@ document.getElementById('download-all-btn')?.addEventListener('click', () => {
     });
 });
 
-// ================= TIMERS & HELPERS =================
+// ================= TIMERS =================
 function startQRTimer() {
     stopQRTimer();
     qrTimeRemaining = 300;
@@ -293,8 +239,10 @@ function startQRTimer() {
         updateTimerDisplay();
         if (qrTimeRemaining <= 0) {
             stopQRTimer();
-            document.getElementById('status-text-sender').innerText = 'Session expired. Please restart.';
-            document.getElementById('status-text-sender').style.color = 'red';
+            document.getElementById('status-text-sender').innerText = 'Session expired. Please start over.';
+            document.getElementById('status-text-sender').style.color = '#ef4444';
+            document.getElementById('qr-container').style.opacity = '0.2';
+            if (session) session.disconnect();
         }
     }, 1000);
 }
