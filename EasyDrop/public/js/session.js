@@ -40,22 +40,31 @@ class EasyDropSession {
         // Since WebRTC is symmetrical, we just need one side to create the offer.
         // Let's say the receiver ALWAYS creates the offer when they click "Accept".
         this.socket.on('offer', async ({ sdp }) => {
-            this.setupWebRTC();
+            console.log(`[Diagnostic] Received offer from peer`);
+            await this.setupWebRTC();
             await this.pc.setRemoteDescription(new RTCSessionDescription(sdp));
             const answer = await this.pc.createAnswer();
             await this.pc.setLocalDescription(answer);
             this.socket.emit('answer', { sessionId: this.sessionId, sdp: this.pc.localDescription });
+            console.log(`[Diagnostic] Answer sent to peer`);
         });
 
         this.socket.on('answer', async ({ sdp }) => {
+            console.log(`[Diagnostic] Received answer from peer`);
             if (this.pc) {
                 await this.pc.setRemoteDescription(new RTCSessionDescription(sdp));
+                console.log(`[Diagnostic] Remote description set for answer`);
             }
         });
 
         this.socket.on('ice-candidate', async ({ candidate }) => {
+            console.log(`[Diagnostic] Received remote ICE candidate`);
             if (this.pc) {
-                await this.pc.addIceCandidate(new RTCIceCandidate(candidate));
+                try {
+                    await this.pc.addIceCandidate(new RTCIceCandidate(candidate));
+                } catch(e) {
+                    console.error(`[Diagnostic] Error adding ICE candidate`, e);
+                }
             }
         });
     }
@@ -85,10 +94,27 @@ class EasyDropSession {
         });
     }
 
-    setupWebRTC() {
+    async setupWebRTC() {
         if (this.pc) return; // already set up
-        this.pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
         
+        console.log(`[Diagnostic] Setting up WebRTC connection...`);
+        let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+        try {
+            const res = await fetch('/api/ice-servers');
+            if (res.ok) {
+                iceServers = await res.json();
+                console.log(`[Diagnostic] Fetched ICE servers from backend. Count: ${iceServers.length}`);
+            }
+        } catch(e) {
+            console.warn(`[Diagnostic] Failed to fetch custom ICE servers. Falling back to default STUN.`, e);
+        }
+
+        this.pc = new RTCPeerConnection({ iceServers });
+        
+        this.pc.oniceconnectionstatechange = () => {
+            console.log(`[Diagnostic] ICE Connection State: ${this.pc.iceConnectionState}`);
+        };
+
         this.pc.onicecandidate = (e) => {
             if (e.candidate) {
                 this.socket.emit('ice-candidate', { sessionId: this.sessionId, candidate: e.candidate });
@@ -99,10 +125,12 @@ class EasyDropSession {
         // We'll let the 'receiver' role create the channel for consistency (since they create the offer).
         if (this.role === 'receiver') {
             this.channel = this.pc.createDataChannel('easydrop-files', { ordered: true });
+            console.log(`[Diagnostic] Created WebRTC Data Channel`);
             this.setupChannel();
         } else {
             this.pc.ondatachannel = (e) => {
                 this.channel = e.channel;
+                console.log(`[Diagnostic] Received WebRTC Data Channel`);
                 this.setupChannel();
             };
         }
@@ -110,7 +138,10 @@ class EasyDropSession {
 
     setupChannel() {
         this.channel.binaryType = 'arraybuffer';
-        this.channel.onopen = () => this.onReady();
+        this.channel.onopen = () => {
+            console.log(`[Diagnostic] Data Channel is OPEN`);
+            this.onReady();
+        };
         
         let incomingParts = [];
         let currentMeta = null;
@@ -146,8 +177,9 @@ class EasyDropSession {
     }
 
     async handleAccept() {
+        console.log(`[Diagnostic] Transfer accepted, generating WebRTC offer...`);
         this.onAccepted();
-        this.setupWebRTC();
+        await this.setupWebRTC();
         const offer = await this.pc.createOffer();
         await this.pc.setLocalDescription(offer);
         this.socket.emit('offer', { sessionId: this.sessionId, sdp: this.pc.localDescription });

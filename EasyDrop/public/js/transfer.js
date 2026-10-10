@@ -54,17 +54,21 @@ document.getElementById('manual-join-btn')?.addEventListener('click', () => {
     // If we are currently waiting as Sender, and we type a code, we join the Receiver's session as Sender.
     // For simplicity, manual code always joins as receiver, UNLESS we are already a sender with files ready.
     if (currentRole === 'sender') {
+        console.log(`[Diagnostic] Joining as sender with manual code: ${code}`);
         session.joinSession(code, null, selectedFiles, handleJoinResult);
     } else {
+        console.log(`[Diagnostic] Joining as receiver with manual code: ${code}`);
         session.joinSession(code, null, null, handleJoinResult);
     }
 });
 
 function handleJoinResult(res) {
     if (res.error) {
+        console.error(`[Diagnostic] Join failed: ${res.error}`);
         showError(res.error);
         return;
     }
+    console.log(`[Diagnostic] Successfully joined session`);
     document.getElementById('qr-container').style.display = 'none';
     document.getElementById('manual-join-container').style.display = 'none';
     stopQRTimer();
@@ -107,15 +111,18 @@ function initAsSender(joinSessionId, joinToken) {
         
         if (joinSessionId) {
             // We are a sender joining an existing receiver session
+            console.log(`[Diagnostic] Sender joining existing receiver session: ${joinSessionId}`);
             session.joinSession(joinSessionId, joinToken, selectedFiles, handleJoinResult);
         } else {
             // We are a sender creating a new session
             session.createSession(selectedFiles, (res) => {
+                console.log(`[Diagnostic] Created SENDER session: ${res.sessionId}`);
                 let origin = window.location.origin;
-                if (res.baseUrl && (origin.includes('localhost') || origin.includes('127.0.0.1') || res.baseUrl.startsWith('https://'))) {
-                    origin = res.baseUrl;
+                if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+                    origin = res.baseUrl || origin;
                 }
                 const receiverUrl = `${origin}/receiver?sessionId=${res.sessionId}&token=${res.receiverToken}`;
+                console.log(`[Diagnostic] QR URL generated: ${receiverUrl}`);
                 document.getElementById('session-code-display').innerText = res.sessionId;
                 generateQR(receiverUrl, 'qr-container');
                 startQRTimer();
@@ -135,6 +142,7 @@ function initAsReceiver(joinSessionId, joinToken) {
     
     if (joinSessionId) {
         // Classic mode: joining a sender's session via URL
+        console.log(`[Diagnostic] Receiver joining existing sender session: ${joinSessionId}`);
         document.getElementById('qr-container').style.display = 'none';
         document.getElementById('manual-join-container').style.display = 'none';
         session.joinSession(joinSessionId, joinToken, null, handleJoinResult);
@@ -142,11 +150,13 @@ function initAsReceiver(joinSessionId, joinToken) {
         // Creating a receiver session
         document.getElementById('manual-join-container').style.display = 'block';
         session.createSession(null, (res) => {
+            console.log(`[Diagnostic] Created RECEIVER session: ${res.sessionId}`);
             let origin = window.location.origin;
-            if (res.baseUrl && (origin.includes('localhost') || origin.includes('127.0.0.1') || res.baseUrl.startsWith('https://'))) {
-                origin = res.baseUrl;
+            if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+                origin = res.baseUrl || origin;
             }
             const senderUrl = `${origin}/create-transfer?mode=send&sessionId=${res.sessionId}&token=${res.senderToken}`;
+            console.log(`[Diagnostic] QR URL generated: ${senderUrl}`);
             document.getElementById('session-code-display').innerText = res.sessionId;
             generateQR(senderUrl, 'qr-container');
             startQRTimer();
