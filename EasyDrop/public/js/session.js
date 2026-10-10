@@ -1,14 +1,13 @@
-
 // WebRTC and Socket.IO connection manager
 class EasyDropSession {
     constructor(role) {
-        this.role = role;
+        this.role = role; // Initial role
         this.socket = io();
         this.pc = null;
         this.channel = null;
         this.sessionId = null;
-        this.files = [];
-        this.receivedFiles = [];
+        this.files = []; // Files I am sending
+        this.receivedFiles = []; // Files I have received
         
         // Callbacks
         this.onPeerJoined = () => {};
@@ -18,21 +17,29 @@ class EasyDropSession {
         this.onProgress = () => {};
         this.onComplete = () => {};
         this.onError = () => {};
+        this.onFilesUpdated = () => {};
 
         this.setupSocket();
     }
 
     setupSocket() {
-        this.socket.on('peer-joined', () => this.onPeerJoined());
+        this.socket.on('peer-joined', (data) => {
+            if (data.files && data.files.length > 0) {
+                this.onFilesUpdated(data.files);
+            }
+            this.onPeerJoined(data);
+        });
+        
         this.socket.on('accept', () => this.handleAccept());
         this.socket.on('decline', () => this.onDeclined());
-        this.socket.on('cancel', () => this.onError('Session cancelled by sender'));
+        this.socket.on('cancel', () => this.onError('Session cancelled'));
         this.socket.on('complete', () => this.onComplete());
         this.socket.on('expired', () => this.onError('Session expired'));
         this.socket.on('peer-left', () => this.onError('Peer disconnected'));
 
+        // Since WebRTC is symmetrical, we just need one side to create the offer.
+        // Let's say the receiver ALWAYS creates the offer when they click "Accept".
         this.socket.on('offer', async ({ sdp }) => {
-            if (this.role !== 'receiver') return;
             this.setupWebRTC();
             await this.pc.setRemoteDescription(new RTCSessionDescription(sdp));
             const answer = await this.pc.createAnswer();
@@ -41,8 +48,9 @@ class EasyDropSession {
         });
 
         this.socket.on('answer', async ({ sdp }) => {
-            if (this.role !== 'sender') return;
-            await this.pc.setRemoteDescription(new RTCSessionDescription(sdp));
+            if (this.pc) {
+                await this.pc.setRemoteDescription(new RTCSessionDescription(sdp));
+            }
         });
 
         this.socket.on('ice-candidate', async ({ candidate }) => {
@@ -53,25 +61,32 @@ class EasyDropSession {
     }
 
     createSession(files, callback) {
-        this.files = files;
-        this.socket.emit('create-session', { files: files.map(f => ({ name: f.name, size: f.size, type: f.type })) }, (res) => {
+        this.files = files || [];
+        const payload = this.files.map(f => ({ name: f.name, size: f.size, type: f.type }));
+        this.socket.emit('create-session', { files: payload }, (res) => {
             this.sessionId = res.sessionId;
-            this.socket.emit('join-session', { sessionId: this.sessionId, role: 'sender', token: res.senderToken }, () => {
+            this.socket.emit('join-session', { sessionId: this.sessionId, role: this.role, token: this.role === 'sender' ? res.senderToken : res.receiverToken }, () => {
                 callback(res);
             });
         });
     }
 
-    joinSession(sessionId, token, callback) {
+    joinSession(sessionId, token, files, callback) {
         this.sessionId = sessionId;
-        this.socket.emit('join-session', { sessionId, role: 'receiver', token }, (res) => {
+        this.files = files || [];
+        const payload = this.files.length > 0 ? this.files.map(f => ({ name: f.name, size: f.size, type: f.type })) : null;
+        
+        this.socket.emit('join-session', { sessionId, role: this.role, token, files: payload }, (res) => {
             if (res.error) return this.onError(res.error);
-            this.files = res.files;
+            if (res.files && res.files.length > 0) {
+                this.onFilesUpdated(res.files);
+            }
             callback(res);
         });
     }
 
     setupWebRTC() {
+        if (this.pc) return; // already set up
         this.pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
         
         this.pc.onicecandidate = (e) => {
@@ -80,7 +95,9 @@ class EasyDropSession {
             }
         };
 
-        if (this.role === 'sender') {
+        // We want data channels to be fully bi-directional.
+        // We'll let the 'receiver' role create the channel for consistency (since they create the offer).
+        if (this.role === 'receiver') {
             this.channel = this.pc.createDataChannel('easydrop-files', { ordered: true });
             this.setupChannel();
         } else {
@@ -95,35 +112,37 @@ class EasyDropSession {
         this.channel.binaryType = 'arraybuffer';
         this.channel.onopen = () => this.onReady();
         
-        if (this.role === 'receiver') {
-            let incomingParts = [];
-            let currentMeta = null;
-            let currentSize = 0;
+        let incomingParts = [];
+        let currentMeta = null;
+        let currentSize = 0;
+        let expectedFilesCount = 0;
 
-            this.channel.onmessage = (e) => {
-                if (typeof e.data === 'string') {
-                    const msg = JSON.parse(e.data);
-                    if (msg.type === 'start') {
-                        currentMeta = msg.meta;
-                        incomingParts = [];
-                        currentSize = 0;
-                    } else if (msg.type === 'end') {
-                        const blob = new Blob(incomingParts, { type: currentMeta.type });
-                        this.receivedFiles.push({ name: currentMeta.name, blob });
-                        incomingParts = [];
-                        
-                        if (this.receivedFiles.length === this.files.length) {
-                            this.socket.emit('complete', { sessionId: this.sessionId });
-                            this.onComplete();
-                        }
+        this.channel.onmessage = (e) => {
+            if (typeof e.data === 'string') {
+                const msg = JSON.parse(e.data);
+                if (msg.type === 'batch-start') {
+                    expectedFilesCount = msg.count;
+                    this.receivedFiles = []; // reset for this batch
+                } else if (msg.type === 'start') {
+                    currentMeta = msg.meta;
+                    incomingParts = [];
+                    currentSize = 0;
+                } else if (msg.type === 'end') {
+                    const blob = new Blob(incomingParts, { type: currentMeta.type });
+                    this.receivedFiles.push({ name: currentMeta.name, blob });
+                    incomingParts = [];
+                    
+                    if (this.receivedFiles.length === expectedFilesCount) {
+                        this.socket.emit('complete', { sessionId: this.sessionId });
+                        this.onComplete();
                     }
-                } else {
-                    incomingParts.push(e.data);
-                    currentSize += e.data.byteLength;
-                    this.onProgress(e.data.byteLength);
                 }
-            };
-        }
+            } else {
+                incomingParts.push(e.data);
+                currentSize += e.data.byteLength;
+                this.onProgress(e.data.byteLength);
+            }
+        };
     }
 
     async handleAccept() {
@@ -161,12 +180,16 @@ class EasyDropSession {
         }
     }
 
-    async sendFiles() {
+    async sendFiles(filesToSend) {
         if (!this.channel || this.channel.readyState !== 'open') return;
         
+        const files = filesToSend || this.files;
+        if (!files || files.length === 0) return;
+
         const CHUNK_SIZE = 16 * 1024;
+        this.channel.send(JSON.stringify({ type: 'batch-start', count: files.length }));
         
-        for (const file of this.files) {
+        for (const file of files) {
             this.channel.send(JSON.stringify({ type: 'start', meta: { name: file.name, size: file.size, type: file.type } }));
             
             let offset = 0;

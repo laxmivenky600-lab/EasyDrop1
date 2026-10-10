@@ -34,7 +34,54 @@
     </header>
 
     <main class="transfer-container">
-        <div id="selection-view" class="view active">
+        <!-- MODE SELECTION VIEW -->
+        <div id="mode-selection-view" class="view active">
+            <h2 style="text-align: center; margin-bottom: 10px;">Select Transfer Mode</h2>
+            <p style="text-align: center; color: #6b7280; margin-bottom: 30px;">Choose whether you want to send files or receive files from another device.</p>
+            
+            <div class="mode-cards" style="display: flex; gap: 20px; justify-content: center;">
+                <!-- Send Option -->
+                <div class="mode-card" id="mode-send" style="flex: 1; max-width: 320px; padding: 40px 20px; border: 2px solid #eef2ff; border-radius: 16px; background: white; cursor: pointer; text-align: center; transition: all 0.3s ease; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                    <div style="margin-bottom: 20px; display: flex; justify-content: center;">
+                        <div style="width: 64px; height: 64px; border-radius: 50%; background: #eef2ff; display: flex; align-items: center; justify-content: center;">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                        </div>
+                    </div>
+                    <h3 style="font-size: 20px; font-weight: 600; color: #1f2937; margin-bottom: 12px;">Send Files</h3>
+                    <p style="color: #6b7280; font-size: 14px; margin-bottom: 24px; line-height: 1.5;">Select photos, videos, documents, or other files to share with another device.</p>
+                    <button class="btn-primary" style="width: 100%;">Start Sending</button>
+                </div>
+                <!-- Receive Option -->
+                <div class="mode-card" id="mode-receive" style="flex: 1; max-width: 320px; padding: 40px 20px; border: 2px solid #eef2ff; border-radius: 16px; background: white; cursor: pointer; text-align: center; transition: all 0.3s ease; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                    <div style="margin-bottom: 20px; display: flex; justify-content: center;">
+                        <div style="width: 64px; height: 64px; border-radius: 50%; background: #eef2ff; display: flex; align-items: center; justify-content: center;">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="7 10 12 15 17 10"></polyline>
+                                <line x1="12" y1="15" x2="12" y2="3"></line>
+                            </svg>
+                        </div>
+                    </div>
+                    <h3 style="font-size: 20px; font-weight: 600; color: #1f2937; margin-bottom: 12px;">Receive Files</h3>
+                    <p style="color: #6b7280; font-size: 14px; margin-bottom: 24px; line-height: 1.5;">Connect another device and receive files securely.</p>
+                    <button class="btn-primary" style="width: 100%;">Start Receiving</button>
+                </div>
+            </div>
+        </div>
+
+        <style>
+            .mode-card:hover { transform: translateY(-5px); border-color: var(--primary); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); }
+            @media (max-width: 640px) { .mode-cards { flex-direction: column; align-items: center; } }
+            .confetti { font-size: 48px; margin-bottom: 20px; animation: bounce 2s infinite; }
+            @keyframes bounce { 0%, 20%, 50%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-20px); } 60% { transform: translateY(-10px); } }
+        </style>
+
+        <!-- FILE SELECTION VIEW (Sender Step 1) -->
+        <div id="selection-view" class="view" style="display: none;">
             <h2>Pick what goes. Nothing else.</h2>
             <div class="drop-zone" id="drop-zone">
                 <p>Drop files here or click to browse</p>
@@ -45,21 +92,63 @@
             <button id="create-session-btn" class="btn-primary" disabled>Create Transfer</button>
         </div>
 
+        <!-- MANUAL JOIN OR QR VIEW (Sender Step 2 or Receiver Step 1) -->
         <div id="qr-view" class="view" style="display: none;">
-            <h2>Scan to Connect</h2>
+            <h2 id="qr-title">Scan to Connect</h2>
             <div id="qr-container"></div>
-            <div id="qr-timer-container" style="display: none; margin-top: 15px; margin-bottom: 25px;">
-                <p style="font-size: 15px; font-weight: 600; color: #6b7280; margin: 0;">QR code expires in <span id="qr-countdown" style="font-variant-numeric: tabular-nums;">05:00</span></p>
+            <div style="margin-top: 15px; font-size: 18px; font-weight: bold; letter-spacing: 2px;">
+                Session Code: <span id="session-code-display" style="color: var(--primary);">----</span>
             </div>
-            <p id="status-text">Waiting for receiver...</p>
-            <div id="transfer-controls" style="display: none;">
+            
+            <div id="manual-join-container" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
+                <p style="font-size: 14px; margin-bottom: 10px; color: #6b7280;">Or enter a Session Code from another device:</p>
+                <div style="display: flex; gap: 10px; justify-content: center;">
+                    <input type="text" id="manual-session-code" placeholder="e.g. ED-A1B2C3" style="padding: 10px; border: 1px solid #ccc; border-radius: 6px; width: 200px; text-transform: uppercase;">
+                    <button id="manual-join-btn" class="btn-primary">Join</button>
+                </div>
+            </div>
+
+            <div id="qr-timer-container" style="display: none; margin-top: 15px; margin-bottom: 25px;">
+                <p style="font-size: 15px; font-weight: 600; color: #6b7280; margin: 0;">Session expires in <span id="qr-countdown" style="font-variant-numeric: tabular-nums;">05:00</span></p>
+            </div>
+            
+            <p id="status-text">Waiting for connection...</p>
+            
+            <!-- Receiver specific controls -->
+            <div id="approval-controls" style="display: none; margin-top: 20px;">
+                <button id="accept-btn" class="btn-primary">Accept Transfer</button>
+                <button id="decline-btn" class="btn-secondary">Decline</button>
+            </div>
+            
+            <!-- Sender specific controls -->
+            <div id="transfer-controls" style="display: none; margin-top: 20px;">
                 <button id="send-files-btn" class="btn-primary">Send Files</button>
             </div>
-            <div id="progress-container" style="display: none;">
+
+            <!-- Progress -->
+            <div id="progress-container" style="display: none; margin-top: 20px;">
                 <div class="progress-bar"><div id="progress-fill"></div></div>
                 <p id="progress-text">0%</p>
             </div>
-            <button id="cancel-btn" class="btn-secondary">Cancel Session</button>
+
+            <button id="cancel-btn" class="btn-secondary" style="margin-top: 20px;">Cancel Session</button>
+        </div>
+
+        <!-- COMPLETION VIEW -->
+        <div id="completion-view" class="view" style="display: none; text-align: center;">
+            <div class="confetti">🎉 ✨ 🎊</div>
+            <h2 style="color: var(--primary);">Transfer Complete!</h2>
+            <p id="completion-details" style="margin-bottom: 30px; color: #4b5563;">Your files have been successfully transferred.</p>
+            
+            <div id="download-controls" style="display: none; margin-bottom: 20px;">
+                <button id="download-all-btn" class="btn-primary" style="margin-right: 10px;">Download All as ZIP</button>
+            </div>
+            
+            <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+                <!-- Two-way flow: Send files back -->
+                <button id="send-back-btn" class="btn-secondary">Switch Direction / Send Files Back</button>
+                <a href="/" class="btn-secondary">Return Home</a>
+            </div>
         </div>
     </main>
 

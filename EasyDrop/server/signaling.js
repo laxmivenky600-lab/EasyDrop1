@@ -6,22 +6,23 @@ function initialize(io) {
 
     io.on('connection', (socket) => {
         socket.on('create-session', (data, callback) => {
-            if (!data || !data.files || !Array.isArray(data.files)) {
-                return callback({ error: 'Invalid request' });
-            }
-            if (data.files.length > 100) {
-                return callback({ error: 'Too many files. Limit is 100.' });
-            }
-            for (const f of data.files) {
-                if (typeof f.size !== 'number' || typeof f.name !== 'string') {
-                    return callback({ error: 'Invalid file metadata' });
+            let files = [];
+            if (data && data.files) {
+                if (!Array.isArray(data.files) || data.files.length > 100) {
+                    return callback({ error: 'Too many files. Limit is 100.' });
                 }
-                if (f.size > 50 * 1024 * 1024 * 1024) { // 50 GB limit
-                    return callback({ error: 'File size exceeds 50GB limit' });
+                for (const f of data.files) {
+                    if (typeof f.size !== 'number' || typeof f.name !== 'string') {
+                        return callback({ error: 'Invalid file metadata' });
+                    }
+                    if (f.size > 50 * 1024 * 1024 * 1024) { // 50 GB limit
+                        return callback({ error: 'File size exceeds 50GB limit' });
+                    }
                 }
+                files = data.files;
             }
 
-            const session = sessions.createSession(data.files);
+            const session = sessions.createSession(files);
             const publicUrl = process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL;
             let baseUrl = publicUrl;
             if (!baseUrl) {
@@ -49,24 +50,26 @@ function initialize(io) {
             });
         });
 
-        socket.on('join-session', ({ sessionId, role, token }, callback) => {
+        socket.on('join-session', ({ sessionId, role, token, files }, callback) => {
             const session = sessions.getSession(sessionId);
             if (!session) {
                 return callback({ error: 'Session not found or expired' });
             }
 
+            // We allow missing tokens for manual session code entry (simplified for UX)
             if (role === 'sender') {
-                if (session.senderToken !== token) return callback({ error: 'Invalid token' });
+                if (token && session.senderToken !== token) return callback({ error: 'Invalid token' });
                 session.senderSocketId = socket.id;
+                if (files) session.files = files; // sender brings files
             } else if (role === 'receiver') {
-                if (session.receiverToken !== token) return callback({ error: 'Invalid token' });
+                if (token && session.receiverToken !== token) return callback({ error: 'Invalid token' });
                 session.receiverSocketId = socket.id;
             }
 
             socket.join(sessionId);
             
             // Notify other peer if present
-            socket.to(sessionId).emit('peer-joined', { role });
+            socket.to(sessionId).emit('peer-joined', { role, files: session.files });
             
             callback({
                 success: true,
