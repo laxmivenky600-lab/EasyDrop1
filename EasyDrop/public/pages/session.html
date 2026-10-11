@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Create Transfer - EasyDrop</title>
+    <title>EasyDrop - Fast & Secure File Transfer</title>
     <link rel="stylesheet" href="/css/style.css">
     <link rel="stylesheet" href="/css/transfer.css">
 </head>
@@ -22,211 +22,258 @@
 
             <div class="nav-menu-wrapper" id="nav-menu-wrapper">
                 <nav class="nav-links">
-                    <a href="/">Home</a>
-                    <a href="/#how-it-works">How It Works</a>
-                    <a href="/#features">Features</a>
-                    <a href="/#security">Security</a>
+                    <a href="/" class="active">Home</a>
+                    <a href="/about">How It Works</a>
                 </nav>
-                <span class="nav-divider" aria-hidden="true"></span>
-                <a href="/create-transfer" class="btn-primary-small">Create Transfer</a>
             </div>
         </div>
     </header>
 
     <main class="transfer-container">
-        <!-- MODE SELECTION VIEW -->
+        <!-- MODE SELECTION VIEW (Home Screen: Only Send and Receive) -->
         <div id="mode-selection-view" class="view active">
-            <h2 style="text-align: center; margin-bottom: 10px;">Select Transfer Mode</h2>
-            <p style="text-align: center; color: #6b7280; margin-bottom: 30px;">Choose whether you want to send files or receive files from another device.</p>
+            <h2 style="text-align: center; margin-bottom: 8px; font-size: 28px; font-weight: 700; color: #111827;">EasyDrop Transfer</h2>
+            <p style="text-align: center; color: #6b7280; margin-bottom: 36px; font-size: 15px;">Fast, secure peer-to-peer file sharing directly between devices.</p>
             
-            <div class="mode-cards" style="display: flex; gap: 20px; justify-content: center;">
-                <div class="mode-card" id="mode-send" style="flex: 1; max-width: 320px; padding: 40px 20px; border: 2px solid #eef2ff; border-radius: 16px; background: white; cursor: pointer; text-align: center; transition: all 0.3s ease; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+            <div class="mode-cards" style="display: flex; gap: 24px; justify-content: center; max-width: 680px; margin: 0 auto;">
+                <!-- Option 1: Send -->
+                <div class="mode-card" id="mode-send" style="flex: 1; min-width: 260px; max-width: 320px; padding: 40px 24px; border: 2px solid #eef2ff; border-radius: 20px; background: white; cursor: pointer; text-align: center; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
                     <div style="margin-bottom: 20px; display: flex; justify-content: center;">
-                        <div style="width: 64px; height: 64px; border-radius: 50%; background: #eef2ff; display: flex; align-items: center; justify-content: center;">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <div style="width: 72px; height: 72px; border-radius: 50%; background: #eef2ff; display: flex; align-items: center; justify-content: center;">
+                            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                                 <polyline points="17 8 12 3 7 8"></polyline>
                                 <line x1="12" y1="3" x2="12" y2="15"></line>
                             </svg>
                         </div>
                     </div>
-                    <h3 style="font-size: 20px; font-weight: 600; color: #1f2937; margin-bottom: 12px;">Send Files</h3>
-                    <p style="color: #6b7280; font-size: 14px; margin-bottom: 24px; line-height: 1.5;">Select photos, videos, documents, or other files to share with another device.</p>
-                    <button class="btn-primary" style="width: 100%; pointer-events: none;">Start Sending</button>
+                    <h3 style="font-size: 22px; font-weight: 700; color: #1f2937; margin-bottom: 10px;">Send</h3>
+                    <p style="color: #6b7280; font-size: 14px; margin-bottom: 24px; line-height: 1.5;">Select files on this device and show a QR code for the receiver to scan.</p>
+                    <button class="btn-primary" style="width: 100%; pointer-events: none; font-size: 15px; padding: 12px;">Send Files</button>
                 </div>
-                <div class="mode-card" id="mode-receive" style="flex: 1; max-width: 320px; padding: 40px 20px; border: 2px solid #eef2ff; border-radius: 16px; background: white; cursor: pointer; text-align: center; transition: all 0.3s ease; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+
+                <!-- Option 2: Receive -->
+                <div class="mode-card" id="mode-receive" style="flex: 1; min-width: 260px; max-width: 320px; padding: 40px 24px; border: 2px solid #eef2ff; border-radius: 20px; background: white; cursor: pointer; text-align: center; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
                     <div style="margin-bottom: 20px; display: flex; justify-content: center;">
-                        <div style="width: 64px; height: 64px; border-radius: 50%; background: #eef2ff; display: flex; align-items: center; justify-content: center;">
-                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <div style="width: 72px; height: 72px; border-radius: 50%; background: #eef2ff; display: flex; align-items: center; justify-content: center;">
+                            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                                 <polyline points="7 10 12 15 17 10"></polyline>
                                 <line x1="12" y1="15" x2="12" y2="3"></line>
                             </svg>
                         </div>
                     </div>
-                    <h3 style="font-size: 20px; font-weight: 600; color: #1f2937; margin-bottom: 12px;">Receive Files</h3>
-                    <p style="color: #6b7280; font-size: 14px; margin-bottom: 24px; line-height: 1.5;">Generate a QR code so another device can send files to you.</p>
-                    <button class="btn-primary" style="width: 100%; pointer-events: none;">Start Receiving</button>
+                    <h3 style="font-size: 22px; font-weight: 700; color: #1f2937; margin-bottom: 10px;">Receive</h3>
+                    <p style="color: #6b7280; font-size: 14px; margin-bottom: 24px; line-height: 1.5;">Show a QR code on this device so another device can send files to you.</p>
+                    <button class="btn-primary" style="width: 100%; pointer-events: none; font-size: 15px; padding: 12px;">Receive Files</button>
                 </div>
             </div>
-            
-            <div style="margin-top: 40px; text-align: center;">
-            </div>
         </div>
+
         <style>
-            .mode-card:hover { transform: translateY(-5px); border-color: var(--primary); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); }
+            .mode-card:hover { transform: translateY(-6px); border-color: var(--primary); box-shadow: 0 12px 28px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08); }
             @media (max-width: 640px) { .mode-cards { flex-direction: column; align-items: center; } }
-            @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+            @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.9); } }
             @keyframes spin { to { transform: rotate(360deg); } }
         </style>
 
-        <!-- FILE SELECTION VIEW (Sender Step 1, or generic file pick) -->
+        <!-- FILE SELECTION VIEW (Sender selects files) -->
         <div id="selection-view" class="view" style="display: none;">
-            <h2>Select files to share</h2>
+            <h2 id="selection-title" style="margin-bottom: 10px;">Select files to share</h2>
+            <p id="selection-subtitle" style="color: #6b7280; margin-bottom: 20px;">Choose one or more files to transfer to the connected device.</p>
             <div class="drop-zone" id="drop-zone">
-                <p>Drop files here or click to browse</p>
+                <p style="margin-bottom: 12px; font-weight: 500; color: #4b5563;">Drop files here or click to browse</p>
                 <input type="file" id="file-input" multiple style="display: none;">
                 <button class="btn-secondary" onclick="document.getElementById('file-input').click()">Browse files</button>
             </div>
             <div id="file-list" class="file-list"></div>
-            <button id="create-session-btn" class="btn-primary" disabled>Create Transfer</button>
-            <button id="send-now-btn" class="btn-primary" style="display: none;" disabled>Send Now</button>
-            <button id="cancel-selection-btn" class="btn-secondary" style="margin-top: 10px; display: none;">Cancel</button>
+            <div style="display: flex; gap: 12px; margin-top: 15px;">
+                <button id="create-session-btn" class="btn-primary" style="flex: 1;" disabled>Generate QR Code</button>
+                <button id="send-now-btn" class="btn-primary" style="flex: 1; display: none;" disabled>Send Files</button>
+                <button id="cancel-selection-btn" class="btn-secondary">Cancel</button>
+            </div>
         </div>
 
-        <!-- LOADING VIEW -->
-        <div id="loading-view" class="view" style="display: none; text-align: center; padding: 40px 20px;">
-            <div style="width: 48px; height: 48px; border: 4px solid #eef2ff; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px;"></div>
-            <h3 style="color: var(--primary); font-size: 18px;">Connecting...</h3>
-            <p style="color: #6b7280; margin-top: 10px;">Please wait while we establish a secure connection.</p>
-        </div>
-
-        <!-- SENDER QR VIEW -->
+        <!-- SENDER / RECEIVER QR VIEW -->
         <div id="qr-view" class="view" style="display: none; text-align: center;">
-            <h2>Session Created</h2>
-            <p style="color: #6b7280; margin-bottom: 20px;">Ask the receiver to scan this QR code or enter the code below.</p>
-            
-            <div id="qr-container" style="display: flex; justify-content: center; margin-bottom: 15px;"></div>
-            <div style="margin-top: 10px; font-size: 20px; font-weight: bold; letter-spacing: 2px; padding: 15px; background: #f3f4f6; border-radius: 8px; display: inline-block;">
-                Code: <span id="session-code-display" style="color: var(--primary);">----</span>
+            <!-- Creating Session State -->
+            <div id="qr-creating-container" style="display: none; padding: 30px 20px;">
+                <div style="width: 48px; height: 48px; border: 4px solid #eef2ff; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px;"></div>
+                <h3 style="color: var(--primary); font-size: 20px; font-weight: 600; margin-bottom: 8px;">Creating session...</h3>
+                <p style="color: #6b7280; font-size: 14px; margin-bottom: 24px;">Please wait while we establish a secure transfer session.</p>
+                <button id="cancel-creating-btn" class="btn-secondary">Cancel</button>
             </div>
 
-            <div id="qr-timer-container" style="margin-top: 25px; margin-bottom: 25px;">
-                <p style="font-size: 15px; font-weight: 600; color: #6b7280; margin: 0;">Session expires in <span id="qr-countdown" style="font-variant-numeric: tabular-nums;">05:00</span></p>
+            <!-- Session Creation Error State -->
+            <div id="qr-error-container" style="display: none; padding: 30px 20px;">
+                <div style="width: 56px; height: 56px; border-radius: 50%; background: #fee2e2; color: #ef4444; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                </div>
+                <h3 style="color: #b91c1c; font-size: 20px; font-weight: 600; margin-bottom: 8px;">Session Error</h3>
+                <p id="qr-error-text" style="color: #6b7280; font-size: 14px; margin-bottom: 24px;">Unable to establish session. Please try again.</p>
+                <div style="display: flex; gap: 12px; justify-content: center;">
+                    <button id="retry-session-btn" class="btn-primary">Retry</button>
+                    <button id="cancel-error-btn" class="btn-secondary">Back to Home</button>
+                </div>
             </div>
-            
-            <p id="status-text-sender" style="color: #4f46e5; font-weight: 500; animation: pulse 2s infinite;">Waiting for receiver to connect...</p>
-            
-            <div style="margin-top: 20px;"><button id="cancel-session-btn" class="btn-secondary">Cancel Session</button></div>
+
+            <!-- Success State: Real QR code -->
+            <div id="qr-success-container" style="display: none;">
+                <h2 id="qr-title" style="margin-bottom: 8px; font-size: 24px; font-weight: 700; color: #111827;">Scan to Connect</h2>
+                <p id="qr-subtitle" style="color: #6b7280; margin-bottom: 24px; font-size: 15px;">Scan this QR code with the other device to connect automatically.</p>
+                
+                <div style="position: relative; display: inline-block;" class="qr-wrapper" id="qr-wrapper">
+                    <div id="qr-container" style="display: flex; justify-content: center; margin-bottom: 15px;"></div>
+                    <div id="qr-scanner-line" class="scanning-line"></div>
+                </div>
+
+                <div style="margin: 15px 0;">
+                    <div id="status-badge" style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 16px; background: #eef2ff; border-radius: 20px;">
+                        <span style="width: 8px; height: 8px; border-radius: 50%; background: #4f46e5; animation: pulse 1.5s infinite;"></span>
+                        <span id="status-text-sender" style="color: #4f46e5; font-weight: 600; font-size: 14px;">Waiting for scan</span>
+                    </div>
+                </div>
+
+                <div id="qr-timer-container" style="margin-top: 10px; margin-bottom: 20px;">
+                    <p style="font-size: 13px; font-weight: 500; color: #9ca3af; margin: 0;">Session expires in <span id="qr-countdown" style="font-variant-numeric: tabular-nums;">05:00</span></p>
+                </div>
+                
+                <div id="qr-expired-actions" style="display: none; margin-top: 15px;">
+                    <button id="generate-new-qr-btn" class="btn-primary">Generate New QR</button>
+                </div>
+
+                <div style="margin-top: 15px;"><button id="cancel-session-btn" class="btn-secondary">Cancel</button></div>
+            </div>
         </div>
 
-        <!-- TRANSFER ACTIVE VIEW -->
-        <div id="transfer-active-view" class="view" style="display: none; text-align: center; padding: 40px 20px;">
-            <div id="connection-spinner" style="width: 48px; height: 48px; border: 4px solid #eef2ff; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px;"></div>
-            <div id="connected-icon" style="display: none; width: 64px; height: 64px; border-radius: 50%; background: #dcfce7; color: #16a34a; align-items: center; justify-content: center; margin: 0 auto 20px;">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                </svg>
-            </div>
-            
-            <h2 id="transfer-heading" style="color: var(--primary); margin-bottom: 10px;">Connecting...</h2>
-            <p id="transfer-subheading" style="color: #4b5563; margin-bottom: 30px;">Establishing a secure connection.</p>
-            
-            <!-- Active transfer progress -->
-            <div id="active-transfer-container" style="display: none; margin-top: 20px; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background: #f9fafb;">
-                <h3 id="transfer-progress-title" style="margin-bottom: 15px; font-size: 16px;">Transferring...</h3>
-                <div class="progress-bar"><div id="progress-fill"></div></div>
-                <p id="progress-text" style="margin-top: 10px; font-weight: 600;">0%</p>
-                <p id="progress-detail" style="margin-top: 5px; font-size: 13px; color: #6b7280;"></p>
-            </div>
-            
-            <!-- Completion state -->
-            <div id="completion-container" style="display: none; margin-top: 20px; padding: 30px 20px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px;">
-                <h3 style="color: #166534; font-size: 24px; margin-bottom: 10px;">Transfer Completed! 🎉</h3>
-                <p style="color: #15803d; margin-bottom: 20px;">All files were successfully transferred.</p>
-                <div id="download-controls" style="display: none;">
-                    <button id="download-all-btn" class="btn-primary" style="margin-top: 10px; width: 100%;">Save Received Files</button>
+        <!-- TRANSFER ACTIVE VIEW (Connected, Transferring, Completed) -->
+        <div id="transfer-active-view" class="view" style="display: none; text-align: center; padding: 40px 24px;">
+            <div id="connection-animation" style="display: flex; align-items: center; justify-content: center; margin-bottom: 25px; gap: 20px;">
+                <div class="device-icon" style="width: 50px; height: 70px; border: 3px solid #6b7280; border-radius: 8px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 5px; background: white; z-index: 2;">
+                    <div style="width: 16px; height: 3px; background: #6b7280; border-radius: 2px;"></div>
                 </div>
-                <a href="/" class="btn-secondary" style="margin-top: 15px; display: inline-block;">Return Home</a>
+                
+                <div class="connection-status-anim" style="flex: 1; max-width: 150px; position: relative; height: 40px; display: flex; align-items: center; justify-content: center;">
+                    <div id="connecting-dots" class="connecting-dots">
+                        <span></span><span></span><span></span>
+                    </div>
+                    <div id="connected-line" style="display: none; position: absolute; width: 100%; height: 3px; background: #16a34a; left: 0; top: 50%; transform: translateY(-50%);"></div>
+                    <div id="connected-icon-anim" style="display: none; position: absolute; width: 32px; height: 32px; border-radius: 50%; background: #16a34a; color: white; align-items: center; justify-content: center; z-index: 3;">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="device-icon" style="width: 50px; height: 70px; border: 3px solid #6b7280; border-radius: 8px; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 5px; background: white; z-index: 2;">
+                    <div style="width: 16px; height: 3px; background: #6b7280; border-radius: 2px;"></div>
+                </div>
+            </div>
+            
+            <div id="connection-status-pill" style="display: inline-flex; align-items: center; gap: 8px; padding: 6px 16px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 20px; margin-bottom: 16px;">
+                <span id="status-pill-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #16a34a;"></span>
+                <span id="status-pill-text" style="color: #166534; font-weight: 600; font-size: 14px;">Connected</span>
+            </div>
+
+            <h2 id="transfer-heading" style="color: #111827; margin-bottom: 8px; font-size: 24px; font-weight: 700;">Connected</h2>
+            <p id="transfer-subheading" style="color: #6b7280; margin-bottom: 24px; font-size: 15px;">Connection secured. Preparing transfer.</p>
+            
+            <!-- Connection Lost / Error Retry -->
+            <div id="connection-retry" style="display: none; margin: 20px 0; padding: 20px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px;">
+                <p id="connection-error-msg" style="color: #dc2626; margin: 0 0 15px 0; font-weight: 600; font-size: 15px;">Connection lost.</p>
+                <button id="retry-conn-btn" class="btn-primary">Try Again</button>
+            </div>
+
+            <!-- Active transfer progress ("Transferring") -->
+            <div id="active-transfer-container" style="display: none; margin-top: 20px; padding: 24px; border: 1px solid #e5e7eb; border-radius: 16px; background: #f9fafb; text-align: left;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <h3 id="transfer-progress-title" style="margin: 0; font-size: 16px; font-weight: 600; color: #111827;">Transferring</h3>
+                    <span id="transfer-status-tag" style="background: #eef2ff; color: var(--primary); font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 12px;">Transferring</span>
+                </div>
+                
+                <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px;">
+                    <span id="current-file-name" style="font-weight: 500; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 65%; color: #374151;"></span>
+                    <span id="current-file-progress" style="color: #6b7280; white-space: nowrap; font-variant-numeric: tabular-nums;"></span>
+                </div>
+                
+                <div class="progress-bar" style="height: 12px; margin: 10px 0; background: #e5e7eb; border-radius: 6px; overflow: hidden;">
+                    <div id="progress-fill" style="height: 100%; background: var(--primary); width: 0%; transition: width 0.15s ease;"></div>
+                </div>
+                
+                <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 10px;">
+                    <div>
+                        <p id="progress-detail" style="font-size: 13px; color: #6b7280; margin: 0;"></p>
+                        <p id="overall-files-text" style="font-size: 12px; color: #9ca3af; margin: 3px 0 0 0;"></p>
+                    </div>
+                    <p id="progress-text" style="font-weight: 700; font-size: 22px; color: var(--primary); margin: 0; font-variant-numeric: tabular-nums;">0%</p>
+                </div>
+            </div>
+            
+            <!-- Completion state ("Transfer Completed") -->
+            <div id="completion-container" style="display: none; margin-top: 20px; padding: 36px 24px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 16px; position: relative; overflow: hidden;">
+                <div style="width: 64px; height: 64px; border-radius: 50%; background: #dcfce7; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;">
+                    <svg class="checkmark-draw" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                </div>
+                <h3 style="color: #166534; font-size: 24px; font-weight: 700; margin-bottom: 8px;">Transfer Completed</h3>
+                <p id="completion-summary" style="color: #15803d; margin-bottom: 24px; font-weight: 500; font-size: 15px;"></p>
+                
+                <div id="download-controls" style="display: none; margin-bottom: 16px;">
+                    <button id="download-all-btn" class="btn-primary" style="width: 100%; font-size: 16px; padding: 12px;">Save Files</button>
+                </div>
+                <div style="display: flex; gap: 12px; justify-content: center;">
+                    <button id="share-more-btn" class="btn-secondary" style="font-size: 15px;">Send / Receive More</button>
+                </div>
             </div>
         </div>
     </main>
 
     <footer class="site-footer" role="contentinfo">
         <div class="footer-inner">
-            <!-- Brand -->
             <div class="footer-brand">
                 <a href="/" class="footer-logo" aria-label="EasyDrop home">
                     <img src="/assets/logo.png" alt="" class="footer-logo-img">
                     <span class="footer-brand-name"><strong>EasyDrop</strong></span>
                 </a>
                 <p class="footer-tagline"><em>Scan. Connect. Share.</em></p>
-                <p class="footer-desc">Share files directly between connected devices using temporary sessions and QR codes.</p>
+                <p class="footer-desc">Direct peer-to-peer file transfer between devices using QR codes.</p>
             </div>
 
-            <!-- Navigation -->
             <div class="footer-col">
                 <h3 class="footer-col-title">Navigation</h3>
                 <ul class="footer-col-links">
                     <li><a href="/">Home</a></li>
-                    <li><a href="/#how-it-works" class="footer-scroll-link" data-section="how-it-works">How It Works</a></li>
-                    <li><a href="/#features" class="footer-scroll-link" data-section="features">Features</a></li>
-                    <li><a href="/#security" class="footer-scroll-link" data-section="security">Security</a></li>
-                    <li><a href="/create-transfer" class="footer-create-link">Create Transfer</a></li>
+                    <li><a href="/about">How It Works</a></li>
                 </ul>
             </div>
 
-        <!-- Features -->
-        <div class="footer-col">
-            <h3 class="footer-col-title">Features</h3>
-            <ul class="footer-col-links plain-text">
-                <li>QR-Based Sharing</li>
-                <li>Two-Way Transfer</li>
-                <li>Direct WebRTC Transfer</li>
-                <li>No Account Required</li>
-            </ul>
+            <div class="footer-col">
+                <h3 class="footer-col-title">Features</h3>
+                <ul class="footer-col-links plain-text">
+                    <li>QR-Based Pairing</li>
+                    <li>Send &amp; Receive</li>
+                    <li>Direct WebRTC Transfer</li>
+                    <li>No Account Required</li>
+                </ul>
+            </div>
+
+            <div class="footer-col">
+                <h3 class="footer-col-title">Security &amp; Privacy</h3>
+                <ul class="footer-col-links plain-text">
+                    <li>Automatic Pairing</li>
+                    <li>Temporary Sessions</li>
+                    <li>No Cloud Storage</li>
+                </ul>
+            </div>
         </div>
 
-        <!-- Security -->
-        <div class="footer-col">
-            <h3 class="footer-col-title">Security &amp; Privacy</h3>
-            <ul class="footer-col-links plain-text">
-                <li>Receiver Approval</li>
-                <li>Temporary Sessions</li>
-                <li>No Permanent File Storage</li>
-            </ul>
-        </div>
-    </div>
+        <div class="footer-divider" aria-hidden="true"></div>
 
-    <!-- Animated Text Effect -->
-    <div class="footer-animated-wrapper" id="footer-anim-wrapper">
-        <svg class="footer-animated-svg" viewBox="0 0 1000 200" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-            <defs>
-                <linearGradient id="footer-glow-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stop-color="var(--primary)" stop-opacity="0.85"/>
-                    <stop offset="50%" stop-color="#7a9dff" stop-opacity="1"/>
-                    <stop offset="100%" stop-color="var(--primary)" stop-opacity="0.85"/>
-                </linearGradient>
-                <mask id="footer-text-mask">
-                    <rect width="100%" height="100%" fill="black" />
-                    <circle id="footer-reveal-circle" cx="50%" cy="50%" r="0" fill="white" filter="url(#footer-blur-filter)" />
-                </mask>
-                <filter id="footer-blur-filter">
-                    <feGaussianBlur stdDeviation="30"/>
-                </filter>
-            </defs>
-
-            <!-- Background faint text -->
-            <text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" class="svg-bg-text">EasyDrop</text>
-
-            <!-- Masked glowing text -->
-            <text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" class="svg-reveal-text" mask="url(#footer-text-mask)" fill="url(#footer-glow-gradient)">EasyDrop</text>
-        </svg>
-    </div>
-
-    <div class="footer-divider" aria-hidden="true"></div>
-
-    <!-- Bottom bar -->
         <div class="footer-bottom">
             <span class="footer-copyright">&copy; <span id="footer-year"></span> EasyDrop. All rights reserved.</span>
         </div>
@@ -234,6 +281,7 @@
 
     <!-- Include libraries -->
     <script src="/socket.io/socket.io.js"></script>
+    <script src="/js/qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="/js/qr.js"></script>

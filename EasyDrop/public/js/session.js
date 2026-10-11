@@ -1,10 +1,15 @@
 // WebRTC and Socket.IO connection manager
 class EasyDropSession {
     constructor() {
-        this.socket = io();
+        this.socket = io({
+            reconnectionAttempts: 5,
+            timeout: 10000
+        });
         this.pc = null;
         this.channel = null;
         this.sessionId = null;
+        this.sessionCode = null;
+        this.expiresAt = null;
         this.role = null;
         
         // Transfer state
@@ -15,7 +20,7 @@ class EasyDropSession {
         this.onConnectedToPeer = () => {};
         this.onPeerDisconnected = () => {};
         this.onTransferOffer = (filesMeta) => {};
-        this.onTransferProgress = (sent, total) => {};
+        this.onTransferProgress = (sent, total, fileName, currentFileBytes, currentFileSize) => {};
         this.onTransferComplete = () => {};
         this.onTransferDeclined = () => {};
         this.onError = (err) => {};
@@ -24,16 +29,20 @@ class EasyDropSession {
     }
 
     _setupSocket() {
+        this.socket.on('connect_error', (err) => {
+            console.warn('[Diagnostic] Socket connect error:', err ? err.message : err);
+        });
+
         this.socket.on('peer-joined', async () => {
-            console.log(`[Diagnostic] Peer joined the session.`);
-            // If I am the creator (sender), and someone joined, I should create the WebRTC offer.
+            console.log('[Diagnostic] Peer joined the session.');
+            // The creator initiates the WebRTC offer
             if (this.role === 'creator') {
                 await this._initiateWebRTC();
             }
         });
 
         this.socket.on('offer', async ({ sdp }) => {
-            console.log(`[Diagnostic] Received offer from peer`);
+            console.log('[Diagnostic] Received offer from peer');
             await this._setupWebRTC();
             await this.pc.setRemoteDescription(new RTCSessionDescription(sdp));
             const answer = await this.pc.createAnswer();
@@ -42,19 +51,19 @@ class EasyDropSession {
         });
 
         this.socket.on('answer', async ({ sdp }) => {
-            console.log(`[Diagnostic] Received answer from peer`);
+            console.log('[Diagnostic] Received answer from peer');
             if (this.pc) {
                 await this.pc.setRemoteDescription(new RTCSessionDescription(sdp));
             }
         });
 
         this.socket.on('ice-candidate', async ({ candidate }) => {
-            console.log(`[Diagnostic] Received remote ICE candidate`);
-            if (this.pc) {
+            console.log('[Diagnostic] Received remote ICE candidate');
+            if (this.pc && candidate) {
                 try {
                     await this.pc.addIceCandidate(new RTCIceCandidate(candidate));
-                } catch(e) {
-                    console.error(`[Diagnostic] Error adding ICE candidate`, e);
+                } catch (e) {
+                    console.error('[Diagnostic] Error adding ICE candidate', e);
                 }
             }
         });
@@ -64,46 +73,162 @@ class EasyDropSession {
             this.disconnect();
         });
         
-        this.socket.on('expired', () => this.onError('Session expired.'));
-    }
-
-    async createSession(callback) {
-        this.role = 'creator';
-        // Note: we don't send files during session creation anymore. Files are negotiated over WebRTC.
-        this.socket.emit('create-session', { files: [] }, (res) => {
-            if (res.error) {
-                this.onError(res.error);
-                return;
-            }
-            this.sessionId = res.sessionId;
-            this.socket.emit('join-session', { sessionId: this.sessionId, role: 'sender', token: res.senderToken }, (joinRes) => {
-                if (joinRes.error) return this.onError(joinRes.error);
-                callback(res);
-            });
+        this.socket.on('expired', () => {
+            this.onError('Session expired.');
         });
     }
 
-    async joinSession(sessionId, callback) {
+    async createSession(creatorRole, callback) {
+        this.role = 'creator';
+
+        // 1. First attempt: create session via backend REST API
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+            const res = await fetch('/api/sessions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: creatorRole, files: [] }),
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            if (res.ok) {
+                const data = await res.json();
+                if (data && data.sessionId) {
+                    this.sessionId = data.sessionId;
+                    this.sessionCode = data.sessionCode || data.code || data.sessionId;
+                    this.expiresAt = data.expiresAt;
+
+                    const token = creatorRole === 'sender' ? data.senderToken : data.receiverToken;
+                    const attachSocket = () => {
+                        this.socket.emit('join-session', { sessionId: this.sessionId, role: creatorRole, token }, (joinRes) => {
+                            if (joinRes && joinRes.error) {
+                                console.warn('[Diagnostic] Socket join error after REST creation:', joinRes.error);
+                            }
+                        });
+                    };
+
+                    if (this.socket.connected) {
+                        attachSocket();
+                    } else {
+                        this.socket.once('connect', attachSocket);
+                    }
+
+                    if (typeof callback === 'function') {
+                        callback(data);
+                    }
+                    return data;
+                }
+            }
+        } catch (apiErr) {
+            console.warn('[Diagnostic] REST session creation failed, falling back to Socket.IO:', apiErr.message);
+        }
+
+        // 2. Fallback to Socket.IO create-session with reliable timeout
+        return new Promise((resolve, reject) => {
+            let handled = false;
+            const timer = setTimeout(() => {
+                if (!handled) {
+                    handled = true;
+                    const timeoutError = 'Session creation timed out. Please check your network connection and try again.';
+                    this.onError(timeoutError);
+                    if (typeof callback === 'function') {
+                        callback({ error: timeoutError });
+                    }
+                    reject(new Error(timeoutError));
+                }
+            }, 7000);
+
+            const emitCreate = () => {
+                this.socket.emit('create-session', { mode: creatorRole, files: [] }, (res) => {
+                    if (handled) return;
+                    handled = true;
+                    clearTimeout(timer);
+
+                    if (!res || res.error) {
+                        const errMsg = (res && res.error) || 'Failed to create session on server.';
+                        this.onError(errMsg);
+                        if (typeof callback === 'function') callback({ error: errMsg });
+                        reject(new Error(errMsg));
+                        return;
+                    }
+
+                    this.sessionId = res.sessionId;
+                    this.sessionCode = res.sessionCode || res.code || res.sessionId;
+                    this.expiresAt = res.expiresAt;
+                    const token = creatorRole === 'sender' ? res.senderToken : res.receiverToken;
+
+                    this.socket.emit('join-session', { sessionId: this.sessionId, role: creatorRole, token }, (joinRes) => {
+                        if (joinRes && joinRes.error) {
+                            this.onError(joinRes.error);
+                            if (typeof callback === 'function') callback({ error: joinRes.error });
+                            reject(new Error(joinRes.error));
+                            return;
+                        }
+                        if (typeof callback === 'function') callback(res);
+                        resolve(res);
+                    });
+                });
+            };
+
+            if (this.socket.connected) {
+                emitCreate();
+            } else {
+                this.socket.once('connect', emitCreate);
+            }
+        });
+    }
+
+    async joinSession(sessionId, role, callback) {
         this.role = 'joiner';
         this.sessionId = sessionId;
-        this.socket.emit('join-session', { sessionId, role: 'receiver', token: null }, (res) => {
-            if (res.error) {
-                callback({ error: res.error });
-                return;
+        this.sessionCode = sessionId;
+
+        let handled = false;
+        const timer = setTimeout(() => {
+            if (!handled) {
+                handled = true;
+                const err = 'Connection timed out while connecting to session.';
+                if (typeof callback === 'function') callback({ error: err });
             }
-            callback({ success: true });
-        });
+        }, 10000);
+
+        const doJoin = () => {
+            this.socket.emit('join-session', { sessionId, role, token: null }, (res) => {
+                if (handled) return;
+                handled = true;
+                clearTimeout(timer);
+
+                if (!res || res.error) {
+                    const err = (res && res.error) || 'Failed to connect to session.';
+                    if (typeof callback === 'function') callback({ error: err });
+                    return;
+                }
+                if (typeof callback === 'function') callback({ success: true, ...res });
+            });
+        };
+
+        if (this.socket.connected) {
+            doJoin();
+        } else {
+            this.socket.once('connect', doJoin);
+        }
     }
 
     async _setupWebRTC() {
         if (this.pc) return;
-        console.log(`[Diagnostic] Setting up WebRTC connection...`);
-        let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+        console.log('[Diagnostic] Setting up WebRTC connection...');
+        let iceServers = [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+        ];
         try {
             const res = await fetch('/api/ice-servers');
             if (res.ok) iceServers = await res.json();
-        } catch(e) {
-            console.warn(`[Diagnostic] Failed to fetch custom ICE servers.`, e);
+        } catch (e) {
+            console.warn('[Diagnostic] Failed to fetch custom ICE servers.', e);
         }
 
         this.pc = new RTCPeerConnection({ iceServers });
@@ -135,7 +260,7 @@ class EasyDropSession {
     _setupChannel() {
         this.channel.binaryType = 'arraybuffer';
         this.channel.onopen = () => {
-            console.log(`[Diagnostic] Data Channel is OPEN`);
+            console.log('[Diagnostic] Data Channel is OPEN');
             this.onConnectedToPeer();
         };
         
@@ -144,6 +269,7 @@ class EasyDropSession {
         let expectedFilesCount = 0;
         let receivedBytes = 0;
         let totalIncomingBytes = 0;
+        let currentFileReceivedBytes = 0;
 
         this.channel.onmessage = (e) => {
             if (typeof e.data === 'string') {
@@ -161,6 +287,7 @@ class EasyDropSession {
                 } else if (msg.type === 'start-file') {
                     currentMeta = msg.meta;
                     incomingParts = [];
+                    currentFileReceivedBytes = 0;
                 } else if (msg.type === 'end-file') {
                     const blob = new Blob(incomingParts, { type: currentMeta.type });
                     this.receivedFiles.push({ name: currentMeta.name, blob });
@@ -173,7 +300,8 @@ class EasyDropSession {
             } else {
                 incomingParts.push(e.data);
                 receivedBytes += e.data.byteLength;
-                this.onTransferProgress(receivedBytes, totalIncomingBytes);
+                currentFileReceivedBytes += e.data.byteLength;
+                this.onTransferProgress(receivedBytes, totalIncomingBytes, currentMeta ? currentMeta.name : '', currentFileReceivedBytes, currentMeta ? currentMeta.size : 0);
             }
         };
     }
@@ -221,13 +349,23 @@ class EasyDropSession {
                 this.channel.send(buffer);
                 offset += buffer.byteLength;
                 sentBytes += buffer.byteLength;
-                this.onTransferProgress(sentBytes, totalBytes);
+                this.onTransferProgress(sentBytes, totalBytes, file.name, offset, file.size);
             }
             
             this.channel.send(JSON.stringify({ type: 'end-file' }));
         }
         
         this.onTransferComplete();
+    }
+
+    cancelSession() {
+        if (this.sessionId) {
+            if (this.socket && this.socket.connected) {
+                this.socket.emit('cancel', { sessionId: this.sessionId });
+            }
+            fetch(`/api/sessions/${encodeURIComponent(this.sessionId)}/cancel`, { method: 'POST' }).catch(() => {});
+        }
+        this.disconnect();
     }
 
     disconnect() {

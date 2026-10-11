@@ -1,53 +1,75 @@
 const sessions = require('./sessions');
 const cleanup = require('./cleanup');
 
+function getBaseUrl(req) {
+    const publicUrl = process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL;
+    if (publicUrl) return publicUrl.replace(/\/+$/, '');
+
+    if (req) {
+        const host = req.get ? req.get('host') : (req.headers && req.headers.host);
+        if (host && !host.includes('localhost') && !host.includes('127.0.0.1')) {
+            const proto = (req.headers && req.headers['x-forwarded-proto']) || (req.protocol ? req.protocol : 'https');
+            return `${proto}://${host}`;
+        }
+    }
+
+    const os = require('os');
+    const interfaces = os.networkInterfaces();
+    let localIp = '127.0.0.1';
+    for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name]) {
+            if (iface.family === 'IPv4' && !iface.internal) {
+                localIp = iface.address;
+                break;
+            }
+        }
+        if (localIp !== '127.0.0.1') break;
+    }
+    const port = process.env.PORT || 3000;
+    return `http://${localIp}:${port}`;
+}
+
 function initialize(io) {
     cleanup.startCleanupTask(io);
 
     io.on('connection', (socket) => {
         socket.on('create-session', (data, callback) => {
             let files = [];
+            const mode = (data && data.mode) ? data.mode : 'send';
             if (data && data.files) {
                 if (!Array.isArray(data.files) || data.files.length > 100) {
-                    return callback({ error: 'Too many files. Limit is 100.' });
+                    return typeof callback === 'function' ? callback({ error: 'Too many files. Limit is 100.' }) : null;
                 }
                 for (const f of data.files) {
                     if (typeof f.size !== 'number' || typeof f.name !== 'string') {
-                        return callback({ error: 'Invalid file metadata' });
+                        return typeof callback === 'function' ? callback({ error: 'Invalid file metadata' }) : null;
                     }
                     if (f.size > 50 * 1024 * 1024 * 1024) { // 50 GB limit
-                        return callback({ error: 'File size exceeds 50GB limit' });
+                        return typeof callback === 'function' ? callback({ error: 'File size exceeds 50GB limit' }) : null;
                     }
                 }
                 files = data.files;
             }
 
-            const session = sessions.createSession(files);
-            const publicUrl = process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL;
-            let baseUrl = publicUrl;
-            if (!baseUrl) {
-                const os = require('os');
-                const interfaces = os.networkInterfaces();
-                let localIp = '127.0.0.1';
-                for (const name of Object.keys(interfaces)) {
-                    for (const iface of interfaces[name]) {
-                        if (iface.family === 'IPv4' && !iface.internal) {
-                            localIp = iface.address;
-                            break;
-                        }
-                    }
-                    if (localIp !== '127.0.0.1') break;
-                }
-                const port = process.env.PORT || 3000;
-                baseUrl = `http://${localIp}:${port}`;
-            }
+            const session = sessions.createSession(files, mode);
+            const req = socket.request;
+            const baseUrl = getBaseUrl(req);
 
-            callback({
-                sessionId: session.sessionId,
-                senderToken: session.senderToken,
-                receiverToken: session.receiverToken,
-                baseUrl
-            });
+            if (typeof callback === 'function') {
+                callback({
+                    success: true,
+                    sessionId: session.sessionId,
+                    sessionCode: session.sessionId,
+                    code: session.sessionId,
+                    mode: session.mode,
+                    senderToken: session.senderToken,
+                    receiverToken: session.receiverToken,
+                    createdAt: session.createdAt,
+                    expiresAt: session.expiresAt,
+                    expiresIn: Math.max(0, Math.round((session.expiresAt - Date.now()) / 1000)),
+                    baseUrl
+                });
+            }
         });
 
         socket.on('join-session', ({ sessionId, role, token, files }, callback) => {
@@ -89,12 +111,15 @@ function initialize(io) {
         socket.on('offer', ({ sessionId, sdp }) => {
             const session = validateSession(sessionId);
             if (!session) return;
+            session.transferStarted = true;
+            session.state = 'transferring';
             socket.to(sessionId).emit('offer', { sdp });
         });
 
         socket.on('answer', ({ sessionId, sdp }) => {
             const session = validateSession(sessionId);
             if (!session) return;
+            session.transferStarted = true;
             socket.to(sessionId).emit('answer', { sdp });
         });
 
@@ -108,8 +133,9 @@ function initialize(io) {
         socket.on('accept', ({ sessionId }) => {
             const session = validateSession(sessionId);
             // Only receiver can accept
-            if (session && session.receiverSocketId === socket.id && session.state === 'pending') {
+            if (session && session.receiverSocketId === socket.id) {
                 session.state = 'accepted';
+                session.transferStarted = true;
                 socket.to(sessionId).emit('accept');
             }
         });
@@ -124,7 +150,7 @@ function initialize(io) {
 
         socket.on('cancel', ({ sessionId }) => {
             const session = validateSession(sessionId);
-            if (session && session.senderSocketId === socket.id) {
+            if (session) {
                 socket.to(sessionId).emit('cancel');
                 sessions.removeSession(sessionId);
             }
@@ -153,4 +179,5 @@ function initialize(io) {
     });
 }
 
-module.exports = { initialize };
+module.exports = { initialize, getBaseUrl };
+

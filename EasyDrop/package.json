@@ -4,12 +4,18 @@
   "description": "EasyDrop file transfer",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node test_easydrop.js && node test_transfer_directions.js"
   },
   "dependencies": {
     "express": "^4.19.2",
     "express-rate-limit": "^8.7.1",
     "helmet": "^8.3.0",
+    "qrcode": "^1.5.4",
+    "qrcode-generator": "^2.0.4",
     "socket.io": "^4.7.5"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.8.4"
   }
 }
